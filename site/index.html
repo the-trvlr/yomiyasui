@@ -558,13 +558,20 @@
     if(detail) line.textContent=detail;
   }
   function completeFirstSetup() {
-    if(!firstSetupRequired || bootSplash.hidden || !bootAnalyzerReady || !bootDictionaryReady) return;
-    setBootStep('ready','done','Всё готово — можно читать');
-    setBootProgress(100,'Подготовка завершена','Анализатор и словари подключены. Приятного чтения!');
-    $('bootTitle').textContent='Всё готово'; $('bootDescription').textContent='Анализатор и словари подключены. Приятного чтения!';
+    if(!firstSetupRequired || !bootAnalyzerReady || !bootDictionaryReady) return;
+    const showSplash = !bootSplash.hidden;
+    if(showSplash) {
+      setBootStep('ready','done','Всё готово — можно читать');
+      setBootProgress(100,'Подготовка завершена','Анализатор и словари подключены. Приятного чтения!');
+      $('bootTitle').textContent='Всё готово';
+      $('bootDescription').textContent='Анализатор и словари подключены. Приятного чтения!';
+    }
     try { localStorage.setItem(BOOT_STORAGE_KEY,'done'); } catch (_) {}
-    firstSetupRequired=false; bootSplash.classList.add('closing');
-    setTimeout(()=>{bootSplash.hidden=true;bootSplash.classList.remove('closing');},450);
+    firstSetupRequired=false;
+    if(showSplash) {
+      bootSplash.classList.add('closing');
+      setTimeout(()=>{bootSplash.hidden=true;bootSplash.classList.remove('closing');},450);
+    }
   }
   function failFirstSetup(step,message) {
     if(!firstSetupRequired || bootSplash.hidden) return;
@@ -1158,7 +1165,8 @@
       setSystemStatus(`Анализ готов · ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз. · нажимай на слово для поиска в словаре`, 'ready');
       bootAnalyzerReady=true; setBootStep('analyzer','done','Анализатор подключён и готов к работе');
       setBootProgress(Math.max(50,bootProgress),'Анализатор готов','Теперь загружаются словари, чтобы поиск и переводы работали без ручной настройки.');
-      startAutomaticDictionaryLoad();
+      if(bootDictionaryReady) completeFirstSetup();
+      else startAutomaticDictionaryLoad();
     } catch (err) {
       if (version !== renderVersion) return;
       renderAnalyzedText(); await restore(); bootAnalyzerFailed=true;
@@ -1780,7 +1788,14 @@
   });
   $('bookPosition').addEventListener('input',event=>{seekToRatio(Number(event.target.value)/1000,false);scheduleProgressSave();});
   $('bookPosition').addEventListener('change',()=>saveCurrentProgress());
-  $('loadDictionary').addEventListener('click', () => { loadFullDictionary(true); });
+  $('loadDictionary').addEventListener('click', () => {
+    loadFullDictionary(true).then(ok => {
+      if(ok) {
+        bootDictionaryReady=true;
+        if(bootAnalyzerReady) completeFirstSetup();
+      }
+    });
+  });
   $('pickDictionary').addEventListener('click', () => dictFilePicker.click());
   dictFilePicker.addEventListener('change', async () => {
     const file=dictFilePicker.files && dictFilePicker.files[0]; if(!file) return;
