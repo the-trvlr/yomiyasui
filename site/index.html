@@ -417,14 +417,28 @@
   const dictSearch = $('dictSearch'), dictSearchResults = $('dictSearchResults'), dictDetail = $('dictDetail'), dictMainView = $('dictMainView');
   const dictLoadStatus = $('dictLoadStatus'), dictFallback = $('dictFallback'), dictStateDot = $('dictStateDot');
   const dictFilePicker = $('dictFilePicker');
-  // Runtime resources are bundled into the GitHub Pages artifact by scripts/prepare-site-assets.sh.
-  const KUROMOJI_URL = './vendor/kuromoji/build/kuromoji.js';
-  const KUROMOJI_DICT = './vendor/kuromoji/dict/';
-  const JSZIP_URL = './vendor/jszip/dist/jszip.min.js';
+  // Resolve assets against the application root, not the browser's current URL.
+  // This remains correct even if a visitor opens /yomiyasui without its trailing slash.
+  const APP_BASE_URL = (() => {
+    const pathname = window.location.pathname;
+    const projectPath = '/yomiyasui';
+    let basePath;
+    if (pathname === projectPath || pathname.startsWith(projectPath + '/')) {
+      basePath = projectPath + '/';
+    } else {
+      basePath = pathname.endsWith('/') ? pathname : pathname.slice(0, pathname.lastIndexOf('/') + 1);
+      if (!basePath) basePath = '/';
+    }
+    return new URL(basePath, window.location.origin);
+  })();
+  const appAssetUrl = (path) => new URL(String(path).replace(/^\\/+/, ''), APP_BASE_URL).href;
+  const KUROMOJI_URL = appAssetUrl('vendor/kuromoji/build/kuromoji.js');
+  const KUROMOJI_DICT = appAssetUrl('vendor/kuromoji/dict/');
+  const JSZIP_URL = appAssetUrl('vendor/jszip/dist/jszip.min.js');
   const JM_VERSION = '3.6.2+20261012204142';
   const JM_ASSETS = {
-    eng: `./data/jmdict-eng-${JM_VERSION}.json.zip`,
-    rus: `./data/jmdict-rus-${JM_VERSION}.json.zip`
+    eng: appAssetUrl(`data/jmdict-eng-${JM_VERSION}.json.zip`),
+    rus: appAssetUrl(`data/jmdict-rus-${JM_VERSION}.json.zip`)
   };
   const JM_DB_NAME = 'kotoba-jmdict-cache-v03';
   let dictionaryById = new Map(), dictionaryEntries = [], formIndex = new Map(), prefixIndex = new Map();
@@ -829,11 +843,33 @@
       document.head.appendChild(script);
     });
   }
+  async function verifyTokenizerAssets() {
+    const files = [
+      'base.dat.gz', 'cc.dat.gz', 'check.dat.gz', 'tid.dat.gz',
+      'tid_map.dat.gz', 'tid_pos.dat.gz', 'unk.dat.gz',
+      'unk_char.dat.gz', 'unk_compat.dat.gz', 'unk_invoke.dat.gz',
+      'unk_map.dat.gz', 'unk_pos.dat.gz'
+    ];
+    const checks = await Promise.all(files.map(async (file) => {
+      const url = new URL(file, KUROMOJI_DICT).href;
+      let response;
+      try {
+        response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      } catch (err) {
+        throw new Error(`Не удаётся проверить файл анализатора ${file}: ${err?.message || 'ошибка сети'}`);
+      }
+      if (!response.ok) throw new Error(`Файл анализатора недоступен: ${file} (HTTP ${response.status})`);
+      return file;
+    }));
+    return checks;
+  }
   async function ensureTokenizer(force=false) {
     if (tokenizer) return tokenizer;
     if (force) { tokenizerPromise = null; }
     if (!tokenizerPromise) tokenizerPromise = (async () => {
-      setSystemStatus('Загружаю японский анализатор и встроенные файлы из приложения…');
+      setSystemStatus('Проверяю локальные файлы японского анализатора…');
+      await verifyTokenizerAssets();
+      setSystemStatus('Загружаю японский анализатор из приложения…');
       await loadScript(KUROMOJI_URL, 'kuromoji');
       return await new Promise((resolve, reject) => {
         let settled = false;
@@ -843,7 +879,7 @@
           clearTimeout(timer);
           if (err) reject(err); else resolve(instance);
         };
-        const timer = setTimeout(() => finish(new Error('Истекло время ожидания загрузки словарных файлов анализатора (90 секунд).')), 90000);
+        const timer = setTimeout(() => finish(new Error('Kuromoji не завершил разбор словаря за 90 секунд. Проверь вкладку Network: запросы к vendor/kuromoji/dict/ должны возвращать 200.')), 90000);
         try {
           window.kuromoji.builder({ dicPath: KUROMOJI_DICT }).build((err, instance) => finish(err, instance));
         } catch (err) { finish(err); }
