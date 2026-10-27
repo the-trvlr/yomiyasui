@@ -361,11 +361,11 @@
               <button class="button tiny" id="loadDictionary">Загрузить / повторить</button>
             </div>
             <div class="dict-fallback" id="dictFallback" hidden>
-              Автозагрузка заблокирована? <a href="https://github.com/scriptin/jmdict-simplified/releases/tag/3.6.2%2B20261019180022" target="_blank" rel="noopener noreferrer">Скачать архивы JMdict</a>, затем выбери ZIP здесь.
+              Не удалось подключить словарь? Архивы входят в публикацию приложения: можно скачать ZIP ниже и выбрать файл вручную.
               <div class="dict-fallback-actions">
                 <button class="button tiny" id="pickDictionary">Выбрать архив / JSON</button>
-                <a href="https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20261019180022/jmdict-eng-3.6.2%2B20261019180022.json.zip" target="_blank" rel="noopener noreferrer">English ZIP</a>
-                <a href="https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20261019180022/jmdict-rus-3.6.2%2B20261019180022.json.zip" target="_blank" rel="noopener noreferrer">Russian ZIP</a>
+                <a href="./data/jmdict-eng-3.6.2+20261012204142.json.zip" target="_blank" rel="noopener noreferrer">English ZIP</a>
+                <a href="./data/jmdict-rus-3.6.2+20261012204142.json.zip" target="_blank" rel="noopener noreferrer">Russian ZIP</a>
               </div>
             </div>
             <div class="dict-settings-note">Полный английский словарь и доступные русские переводы. Архивы можно подключить вручную, если автозагрузка не сработала.</div>
@@ -417,18 +417,20 @@
   const dictSearch = $('dictSearch'), dictSearchResults = $('dictSearchResults'), dictDetail = $('dictDetail'), dictMainView = $('dictMainView');
   const dictLoadStatus = $('dictLoadStatus'), dictFallback = $('dictFallback'), dictStateDot = $('dictStateDot');
   const dictFilePicker = $('dictFilePicker');
-  const KUROMOJI_URL = 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js';
-  const KUROMOJI_DICT = 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/';
-  const JSZIP_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-  const JM_VERSION = '3.6.2+20261019180022';
+  // Runtime resources are bundled into the GitHub Pages artifact by scripts/prepare-site-assets.sh.
+  const KUROMOJI_URL = './vendor/kuromoji/build/kuromoji.js';
+  const KUROMOJI_DICT = './vendor/kuromoji/dict/';
+  const JSZIP_URL = './vendor/jszip/dist/jszip.min.js';
+  const JM_VERSION = '3.6.2+20261012204142';
   const JM_ASSETS = {
-    eng: `https://github.com/scriptin/jmdict-simplified/releases/download/${encodeURIComponent(JM_VERSION)}/jmdict-eng-${JM_VERSION}.json.zip`,
-    rus: `https://github.com/scriptin/jmdict-simplified/releases/download/${encodeURIComponent(JM_VERSION)}/jmdict-rus-${JM_VERSION}.json.zip`
+    eng: `./data/jmdict-eng-${JM_VERSION}.json.zip`,
+    rus: `./data/jmdict-rus-${JM_VERSION}.json.zip`
   };
   const JM_DB_NAME = 'kotoba-jmdict-cache-v03';
   let dictionaryById = new Map(), dictionaryEntries = [], formIndex = new Map(), prefixIndex = new Map();
   let dictionaryLoaded = false, dictionaryLoadingPromise = null, dictionaryLoadFailed = false, dictionarySearchTimer = 0;
   let dictionaryDBPromise = null, dictionaryLastQuery = '', activeDictionaryEntryId = null, dictionaryView = 'results';
+  let dictionaryAutoLoadTimer = 0;
 
   const sample = `静かな夜だった。窓の外では、細い雨が降り続いていた。
 
@@ -834,11 +836,17 @@
       setSystemStatus('Загружаю японский анализатор и его словарные файлы… При первом запуске может понадобиться несколько секунд.');
       await loadScript(KUROMOJI_URL, 'kuromoji');
       return await new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (err, instance) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (err) reject(err); else resolve(instance);
+        };
+        const timer = setTimeout(() => finish(new Error('Истекло время ожидания загрузки словарных файлов анализатора (90 секунд).')), 90000);
         try {
-          window.kuromoji.builder({ dicPath: KUROMOJI_DICT }).build((err, instance) => {
-            if (err) reject(err); else resolve(instance);
-          });
-        } catch (err) { reject(err); }
+          window.kuromoji.builder({ dicPath: KUROMOJI_DICT }).build((err, instance) => finish(err, instance));
+        } catch (err) { finish(err); }
       });
     })().then(instance => { tokenizer = instance; return instance; }).catch(err => { tokenizerPromise = null; throw err; });
     return tokenizerPromise;
@@ -934,10 +942,12 @@
       if (version !== renderVersion) return;
       renderAnalyzedText(); await restore();
       setSystemStatus(`Анализ готов · ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз. · нажимай на слово для поиска в словаре`, 'ready');
+      scheduleDictionaryLoad();
     } catch (err) {
       if (version !== renderVersion) return;
       renderAnalyzedText(); await restore();
-      setSystemStatus('Не удалось загрузить анализатор. Текст доступен, но фуригана и выбор слов пока недоступны. Проверь интернет и попробуй ещё раз.', 'error', true);
+      setSystemStatus('Не удалось загрузить анализатор из локальных файлов приложения. Текст доступен, но фуригана и выбор слов пока недоступны. Попробуй повторить подключение.', 'error', true);
+      scheduleDictionaryLoad();
       console.warn('Kuromoji initialization failed:', err);
     }
   }
@@ -1087,6 +1097,18 @@
       return true;
     } catch (_) { return false; }
   }
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 180000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+      if (controller.signal.aborted) throw new Error(`Истекло время ожидания загрузки ресурса (${Math.round(timeoutMs / 1000)} с).`);
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   async function fetchArchive(language) {
     const cached = await readCachedArchive(language);
     if (cached instanceof ArrayBuffer && cached.byteLength) {
@@ -1095,7 +1117,7 @@
     }
     const url = JM_ASSETS[language];
     updateDictStatus(`Скачиваю JMdict ${language === 'rus' ? 'на русском' : 'на английском'}…`);
-    const response = await fetch(url, {mode:'cors', credentials:'omit', cache:'force-cache'});
+    const response = await fetchWithTimeout(url, {credentials:'omit', cache:'force-cache'}, 180000);
     if (!response.ok) throw new Error(`Не удалось скачать ${language.toUpperCase()} архив: HTTP ${response.status}`);
     let buffer;
     if (response.body && response.body.getReader) {
@@ -1165,13 +1187,19 @@
     }
     // Release the large source object as soon as its compact entries have been extracted.
     try { data.words.length=0; } catch (_) {}
-    updateDictionaryIndex();
+    await updateDictionaryIndex();
     if(statusLabel) updateDictStatus(statusLabel, 'ready');
   }
-  function updateDictionaryIndex() {
+  async function updateDictionaryIndex() {
     dictionaryEntries=[...dictionaryById.values()];
     formIndex=new Map(); prefixIndex=new Map();
-    for(const entry of dictionaryEntries) {
+    const total=dictionaryEntries.length;
+    for(let i=0;i<total;i++) {
+      if(i && i%5000===0) {
+        updateDictStatus(`Индексирую словарь: ${i.toLocaleString('ru-RU')} / ${total.toLocaleString('ru-RU')} записей…`);
+        await new Promise(resolve=>requestAnimationFrame(()=>resolve()));
+      }
+      const entry=dictionaryEntries[i];
       const forms=new Set([...(entry.kanji||[]).map(x=>x.text),...(entry.kana||[]).map(x=>x.text)]);
       for(const form of forms) {
         const norm=normalizeSearch(form); if(!norm) continue;
@@ -1200,9 +1228,16 @@
     dictStateDot.setAttribute('aria-label',message);
     if(state==='ready') dictFallback.hidden=true;
   }
+  function scheduleDictionaryLoad(delay=700) {
+    if(dictionaryLoaded || dictionaryLoadingPromise || dictionaryAutoLoadTimer) return;
+    dictionaryAutoLoadTimer=setTimeout(() => {
+      dictionaryAutoLoadTimer=0;
+      if(!dictionaryLoaded && !dictionaryLoadingPromise) loadFullDictionary();
+    }, delay);
+  }
   async function loadFullDictionary(force=false) {
-    if(dictionaryLoaded && !force) { updateDictStatus(`JMdict подключён · ${dictionaryEntries.length.toLocaleString('ru-RU')} записей`,'ready'); return; }
     if(dictionaryLoadingPromise) return dictionaryLoadingPromise;
+    if(dictionaryLoaded && !force) { updateDictStatus(`JMdict подключён · ${dictionaryEntries.length.toLocaleString('ru-RU')} записей`,'ready'); return; }
     dictionaryLoadFailed=false;
     dictionaryLoadingPromise=(async()=>{
       try {
@@ -1215,7 +1250,6 @@
           await ingestDictionary(parsed.data, language, language==='rus' ? 'JMdict подключён · русский + английский' : 'Английская база загружена');
         }
         dictionaryLoaded=true; dictionaryLoadFailed=false;
-        updateDictionaryIndex();
         updateDictStatus(`Полный JMdict · ${dictionaryEntries.length.toLocaleString('ru-RU')} записей · русский + английский`,'ready');
         dictFallback.hidden=true;
         return true;
@@ -1613,8 +1647,7 @@
     let lastId=null; try{lastId=localStorage.getItem('kotoba-last-book-id')}catch(_){}
     if(lastId&&bookLibrary.some(b=>b.id===lastId)) await activateSavedBook(lastId);
   });
-  // The first visit downloads the full JMdict archives; subsequent launches use IndexedDB cache when available.
-  setTimeout(() => { if (!dictionaryLoaded) loadFullDictionary(); }, 1200);
+  // The full dictionary starts after tokenizer initialization; resources are served locally and cached in IndexedDB.
 })();
 </script>
 </body>
