@@ -48,4 +48,14 @@ for (const [, , source] of scriptBlocks) {
   }
   checked += 1;
 }
+
+const workerPath = path.join(path.dirname(target), 'analyzer-worker.js');
+if (fs.existsSync(workerPath)) {
+  const workerCheck = spawnSync(process.execPath, ['--check', workerPath], { encoding: 'utf8' });
+  if (workerCheck.status !== 0) {
+    console.error(`ERROR: Analyzer worker failed syntax check.\n${workerCheck.stderr || workerCheck.stdout}`);
+    process.exit(workerCheck.status ?? 1);
+  }
+  console.log(`OK: ${workerPath} passed Node syntax check.`);
+}
 console.log(`OK: ${target} passed structural checks; ${ids.length} unique ids; ${checked} inline JavaScript block(s) passed Node syntax check.`);
