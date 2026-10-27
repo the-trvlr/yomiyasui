@@ -355,15 +355,12 @@
     body.mobile-settings-open .controls .transport { display: none; }
 
     .mobile-dictionary-fab {
-      position: fixed; z-index: 999; right: 14px;
-      bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-      display: inline-flex; align-items: center; gap: 8px;
-      min-height: 46px; padding: 0 16px; border: 1px solid rgba(112,91,61,.24);
-      border-radius: 24px; background: rgba(250,246,237,.97); color: #5e503b;
-      box-shadow: 0 5px 18px rgba(65,50,29,.17); font-size: 13px; font-weight: 600;
-      backdrop-filter: blur(12px);
+      position: static; z-index: auto; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+      min-height: 38px; padding: 0 10px; border: 1px solid rgba(112,91,61,.24);
+      border-radius: 22px; background: #f9f4e8; color: #5e503b;
+      box-shadow: none; font-size: 11px; font-weight: 600; white-space: nowrap;
     }
-    .mobile-dictionary-fab span:first-child { font-family: serif; font-size: 19px; }
+    .mobile-dictionary-fab span:first-child { font-family: serif; font-size: 17px; }
     .dictionary {
       position: fixed; z-index: 1000; left: 8px; right: 8px;
       bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); width: auto;
@@ -374,7 +371,7 @@
     }
     .dictionary.mobile-sheet-collapsed { transform: translateY(calc(100% + 24px)); pointer-events: none; visibility: hidden; }
     .dictionary.mobile-sheet-open { transform: translateY(0); pointer-events: auto; visibility: visible; }
-    body.mobile-dictionary-open .mobile-dictionary-fab { display: none; }
+    body.mobile-dictionary-open .mobile-dictionary-fab { opacity: .5; }
     .dictionary .sidebar-heading { flex: 0 0 60px; min-height: 60px; padding: 10px 14px; align-items: center; gap: 9px; }
     .sidebar-title { font-size: 19px; }
     .dict-status-dot { margin-left: auto; }
@@ -513,6 +510,7 @@
         <button class="round-button" id="playPause" title="Запустить / пауза" aria-label="Запустить">▶</button>
         <button class="round-button secondary" id="restart" title="Начать сначала" aria-label="Начать сначала">↺</button>
         <button class="mobile-settings-quick" id="mobileSettingsQuick" type="button" title="Скорость и настройки чтения" aria-label="Открыть настройки скорости и чтения"><span aria-hidden="true">Aa</span><span class="quick-settings-caption">Скорость</span></button>
+        <button class="mobile-dictionary-fab" id="mobileDictionaryFab" type="button" aria-label="Открыть словарь" aria-expanded="false"><span aria-hidden="true">あ</span><span>Словарь</span></button>
       </div>
     </section>
 
@@ -564,7 +562,6 @@
       </div>
       <div class="dict-credit">JMdict / EDRDG · формат JSON от <a href="https://github.com/scriptin/jmdict-simplified" target="_blank" rel="noopener noreferrer">jmdict-simplified</a>. Словарные данные используются по <a href="https://www.edrdg.org/edrdg/licence.html" target="_blank" rel="noopener noreferrer">лицензии EDRDG</a>.</div>
     </aside>
-    <button class="mobile-dictionary-fab" id="mobileDictionaryFab" type="button" aria-label="Открыть словарь" aria-expanded="false"><span aria-hidden="true">あ</span><span>Словарь</span></button>
   </main>
 
     <details class="editor" id="editor">
