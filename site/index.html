@@ -322,7 +322,7 @@
     .chapter-tools .button { flex: 0 0 auto; padding: 6px 8px; font-size: 10px; }
     .chapter-select, .bookmark-select { flex: 0 0 auto; min-width: 78px; max-width: 138px; padding: 6px 7px; font-size: 10px; }
 
-    .reader-shell { height: clamp(360px, calc(100dvh - 340px), 760px); min-height: 360px; max-height: 760px; border-radius: 13px; }
+    .reader-shell { height: clamp(300px, calc(100dvh - 260px), 820px); min-height: min(300px, 42dvh); max-height: 820px; border-radius: 13px; }
     .reader-topline { top: 11px; left: 12px; right: 12px; font-size: 9px; }
     .reader-copy { width: min(calc(var(--line-chars) * 1em), calc(100vw - 34px)); }
     .seek-row { margin: 6px 3px 0; gap: 6px; }
@@ -352,22 +352,34 @@
     body.mobile-dictionary-open .controls .transport,
     body.mobile-settings-open .controls .transport { display: none; }
 
+    .mobile-dictionary-fab {
+      position: fixed; z-index: 999; right: 14px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+      display: inline-flex; align-items: center; gap: 8px;
+      min-height: 46px; padding: 0 16px; border: 1px solid rgba(112,91,61,.24);
+      border-radius: 24px; background: rgba(250,246,237,.97); color: #5e503b;
+      box-shadow: 0 5px 18px rgba(65,50,29,.17); font-size: 13px; font-weight: 600;
+      backdrop-filter: blur(12px);
+    }
+    .mobile-dictionary-fab span:first-child { font-family: serif; font-size: 19px; }
     .dictionary {
       position: fixed; z-index: 1000; left: 8px; right: 8px;
       bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); width: auto;
-      height: min(66dvh, 590px); max-height: calc(100dvh - 70px); min-height: 0;
+      height: min(70dvh, 640px); max-height: calc(100dvh - 70px); min-height: 0;
       margin: 0; border-radius: 17px; box-shadow: 0 12px 38px rgba(55,43,26,.2);
-      transform: translateY(calc(100% - 60px)); transition: transform .24s ease; will-change: transform;
+      transform: translateY(calc(100% + 24px)); transition: transform .24s ease; will-change: transform;
+      pointer-events: none; visibility: hidden;
     }
-    .dictionary.mobile-sheet-collapsed { transform: translateY(calc(100% - 60px)); }
-    .dictionary.mobile-sheet-open { transform: translateY(0); }
+    .dictionary.mobile-sheet-collapsed { transform: translateY(calc(100% + 24px)); pointer-events: none; visibility: hidden; }
+    .dictionary.mobile-sheet-open { transform: translateY(0); pointer-events: auto; visibility: visible; }
+    body.mobile-dictionary-open .mobile-dictionary-fab { display: none; }
     .dictionary .sidebar-heading { flex: 0 0 60px; min-height: 60px; padding: 10px 14px; align-items: center; gap: 9px; }
     .sidebar-title { font-size: 19px; }
     .dict-status-dot { margin-left: auto; }
     .mobile-dict-toggle { display: grid; flex: 0 0 36px; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid rgba(112,91,61,.2); border-radius: 10px; background: rgba(255,252,245,.76); color: #796649; font-size: 21px; line-height: 1; }
     .dictionary-search { padding: 10px 12px 11px; }
     .search-label { font-size: 10px; margin-bottom: 5px; }
-    #dictSearch { min-height: 40px; padding: 9px 10px; font-size: 13px; }
+    #dictSearch { min-height: 44px; padding: 10px 11px; font-size: 16px; }
     .dict-load-row { flex-wrap: wrap; }
     .dict-results-head { padding: 9px 13px 6px; }
     .dict-search-results { padding: 0 7px 8px; }
@@ -383,6 +395,7 @@
     .controls .mobile-settings-grid { gap: 14px 9px; padding-left: 11px; padding-right: 11px; }
   }
   @media (prefers-reduced-motion: reduce) { .dictionary { transition: none; } }
+  @media (min-width: 681px) { .mobile-dictionary-fab { display: none !important; } }
 
 </style>
 </head>
@@ -547,6 +560,7 @@
       </div>
       <div class="dict-credit">JMdict / EDRDG · формат JSON от <a href="https://github.com/scriptin/jmdict-simplified" target="_blank" rel="noopener noreferrer">jmdict-simplified</a>. Словарные данные используются по <a href="https://www.edrdg.org/edrdg/licence.html" target="_blank" rel="noopener noreferrer">лицензии EDRDG</a>.</div>
     </aside>
+    <button class="mobile-dictionary-fab" id="mobileDictionaryFab" type="button" aria-label="Открыть словарь" aria-expanded="false"><span aria-hidden="true">あ</span><span>Словарь</span></button>
   </main>
 
     <details class="editor" id="editor">
@@ -574,6 +588,7 @@
   const dictPanel = $('dictionaryPanel');
   const mobileDictToggle = $('mobileDictToggle'), mobileSettings = $('mobileSettings');
   const mobileSettingsQuick = $('mobileSettingsQuick'), bookShelf = $('bookShelf'), mobileShelfToggle = $('mobileShelfToggle');
+  const mobileDictionaryFab = $('mobileDictionaryFab');
   const mobileLayoutQuery = window.matchMedia('(max-width: 680px)');
   const dictSearch = $('dictSearch'), dictSearchResults = $('dictSearchResults'), dictDetail = $('dictDetail'), dictMainView = $('dictMainView');
   const dictLoadStatus = $('dictLoadStatus'), dictFallback = $('dictFallback'), dictStateDot = $('dictStateDot');
@@ -1639,6 +1654,8 @@
     dictPanel.classList.toggle('mobile-sheet-collapsed', !isOpen);
     document.body.classList.toggle('mobile-dictionary-open', isOpen);
     mobileDictToggle.setAttribute('aria-expanded', String(isOpen));
+    mobileDictionaryFab.setAttribute('aria-expanded', String(isOpen));
+    mobileDictionaryFab.setAttribute('aria-label', isOpen ? 'Словарь открыт' : 'Открыть словарь');
     mobileDictToggle.setAttribute('aria-label', isOpen ? 'Свернуть словарь' : 'Развернуть словарь');
     mobileDictToggle.innerHTML = '<span aria-hidden="true">' + (isOpen ? '⌄' : '⌃') + '</span>';
   }
@@ -1955,7 +1972,8 @@
     await importDictionaryFile(file); dictFilePicker.value='';
   });
   $('clearDictSearch').addEventListener('click', () => { dictSearch.value=''; currentWord=null; activeDictionaryEntryId=null; setDictionaryView('results'); queueDictionarySearch(true); dictSearch.focus(); });
-  mobileDictToggle.addEventListener('click', () => setMobileDictionaryOpen(!dictPanel.classList.contains('mobile-sheet-open')));
+  mobileDictToggle.addEventListener('click', () => setMobileDictionaryOpen(false));
+  mobileDictionaryFab.addEventListener('click', () => setMobileDictionaryOpen(true));
   mobileShelfToggle.addEventListener('click', () => setMobileShelfOpen(bookShelf.classList.contains('mobile-collapsed')));
   mobileSettingsQuick.addEventListener('click', () => {
     if (!mobileLayoutQuery.matches) return;
