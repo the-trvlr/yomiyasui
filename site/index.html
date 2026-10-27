@@ -282,7 +282,7 @@
 <body>
 <div class="boot-splash" id="bootSplash" role="dialog" aria-modal="true" aria-labelledby="bootTitle" aria-describedby="bootDescription" hidden>
   <section class="boot-card">
-    <div class="boot-brand"><img class="boot-logo" src="./app-icon.svg" alt=""><div class="boot-brand-name">読みやすい <span class="boot-version">v0.7</span></div></div>
+    <div class="boot-brand"><img class="boot-logo" src="./app-icon.svg" alt=""><div class="boot-brand-name">読みやすい <span class="boot-version" id="bootVersionBadge">v0.7</span></div></div>
     <div class="boot-eyebrow">Первый запуск</div>
     <h2 id="bootTitle">Готовим чтение</h2>
     <p class="boot-description" id="bootDescription">Подключаем японский анализатор и словари, чтобы дальше всё работало прямо в читалке.</p>
@@ -303,7 +303,7 @@
   <header class="topbar">
     <div class="brand">
       <img class="brand-logo" src="./app-icon.svg" alt="">
-      <div class="brand-title-row"><h1>読みやすい</h1><span class="brand-version">v0.7</span><span class="brand-translation">/ лёгкое чтение</span></div>
+      <div class="brand-title-row"><h1>読みやすい</h1><span class="brand-version" id="brandVersionBadge">v0.7</span><span class="brand-translation">/ лёгкое чтение</span></div>
     </div>
     <div class="top-actions">
       <input class="file-input" id="filePicker" type="file" accept=".epub,.txt,.text,.md,.html,.htm,application/epub+zip,text/plain,text/html">
@@ -313,7 +313,7 @@
   </header>
 
   <div class="status-bar" role="status" aria-live="polite">
-    <span class="status-main"><span class="status-indicator" id="systemIndicator"></span><span id="systemStatus">Готовлю японский анализатор… Для первого запуска нужны интернет и файлы анализатора.</span></span>
+    <span class="status-main"><span class="status-indicator" id="systemIndicator"></span><span id="systemStatus">Подключаю японский анализатор…</span></span>
     <button class="button tiny" id="retryAnalyzer" hidden>Повторить подключение</button>
   </div>
 
@@ -463,10 +463,14 @@
   const dictFilePicker = $('dictFilePicker');
   const bootSplash = $('bootSplash'), bootProgressTrack = $('bootProgressTrack'), bootProgressBar = $('bootProgressBar');
   const bootProgressLabel = $('bootProgressLabel'), bootProgressPct = $('bootProgressPct'), bootContinue = $('bootContinue');
-  const BOOT_STORAGE_KEY = 'yomiyasui-first-setup-v1';
+  const APP_VERSION = '0.7';
+  const JM_VERSION = '3.6.2+20261012204142';
+  const BOOT_STORAGE_KEY = `yomiyasui-first-setup-${JM_VERSION}`;
   let firstSetupRequired = true, bootProgress = 0, bootAnalyzerReady = false, bootAnalyzerFailed = false, bootDictionaryReady = false, autoDictionaryStarted = false;
   try { firstSetupRequired = localStorage.getItem(BOOT_STORAGE_KEY) !== 'done'; } catch (_) { firstSetupRequired = true; }
   bootSplash.hidden = !firstSetupRequired;
+  $('brandVersionBadge').textContent = `v${APP_VERSION}`;
+  $('bootVersionBadge').textContent = `v${APP_VERSION}`;
   // Resolve assets against the application root, not the browser's current URL.
   // This remains correct even if a visitor opens /yomiyasui without its trailing slash.
   const APP_BASE_URL = (() => {
@@ -485,7 +489,6 @@
   const KUROMOJI_URL = appAssetUrl('vendor/kuromoji/build/kuromoji.js');
   const KUROMOJI_DICT = appAssetUrl('vendor/kuromoji/dict/');
   const JSZIP_URL = appAssetUrl('vendor/jszip/dist/jszip.min.js');
-  const JM_VERSION = '3.6.2+20261012204142';
   const JM_ASSETS = {
     eng: appAssetUrl(`data/jmdict-eng-${JM_VERSION}.json.zip`),
     rus: appAssetUrl(`data/jmdict-rus-${JM_VERSION}.json.zip`)
@@ -1438,6 +1441,8 @@
     dictLoadStatus.textContent=message; dictStateDot.classList.toggle('ready',state==='ready'); dictStateDot.classList.toggle('error',state==='error');
     dictStateDot.title=message; dictStateDot.setAttribute('aria-label',message);
     if(state==='ready') dictFallback.hidden=true;
+    if(state==='error') setSystemStatus(message,'error',false);
+    else setSystemStatus(message,state==='ready'?'ready':'loading',false);
     updateBootDictionaryProgress(message,state);
   }
   async function loadFullDictionary(force=false) {
