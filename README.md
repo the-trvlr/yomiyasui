@@ -16,15 +16,21 @@ Expected URL: https://the-trvlr.github.io/yomiyasui/
 
 ## Local development
 
-Open `site/index.html` in a modern browser for a quick local smoke test. The Japanese morphological analyzer and dictionary archives are downloaded from external sources on first use, so those features require internet access until resources are cached.
+Runtime assets are generated, not committed to Git. To create a local copy of the same self-contained static assets used by the deployment, run this once from the repository root (Node.js/npm and curl are required):
 
-For a local static server, from the repository root run:
+```sh
+bash scripts/prepare-site-assets.sh
+```
+
+This downloads the pinned Kuromoji and JSZip libraries, their required files, and the JMdict English/Russian archives into `site/vendor/` and `site/data/`. These generated files are ignored by Git.
+
+Then start a local static server:
 
 ```sh
 python3 -m http.server 8000 --directory site
 ```
 
-Then open http://localhost:8000.
+Open http://localhost:8000. Do not open the HTML directly as a `file://` URL: the analyzer and dictionary load their bundled resources over HTTP.
 
 Run CI checks locally:
 
@@ -42,9 +48,11 @@ The site is static and does not currently have accounts, a backend, or cloud syn
 
 Do not add books, private reading logs, dictionary caches, credentials, or other personal data to this repository.
 
-## Dictionary data and external dependencies
+## Dictionary data and bundled runtime assets
 
-The app fetches Kuromoji resources and JMdict-Simplified archives at runtime. JMdict-derived data is governed by its applicable license; consult the notices in the app and upstream projects before redistributing dictionary data. Dictionary archives are not committed to this repository.
+The GitHub Pages build downloads pinned copies of Kuromoji, JSZip, and the JMdict-Simplified English/Russian archives, then includes them in the published `site/` artifact. The browser loads these assets from the same site origin rather than from third-party CDNs or release URLs. The archive files are cached in IndexedDB when available.
+
+JMdict-derived data is governed by the EDRDG license; the build includes a copy of the license alongside the dictionary archives. Kuromoji and JSZip license notices are included with their bundled files. Runtime assets are generated at deploy time and are not committed to the repository.
 
 ## Current scope
 
