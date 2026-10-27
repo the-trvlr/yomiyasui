@@ -1441,8 +1441,8 @@
     dictLoadStatus.textContent=message; dictStateDot.classList.toggle('ready',state==='ready'); dictStateDot.classList.toggle('error',state==='error');
     dictStateDot.title=message; dictStateDot.setAttribute('aria-label',message);
     if(state==='ready') dictFallback.hidden=true;
-    if(state==='error') setSystemStatus(message,'error',false);
-    else setSystemStatus(message,state==='ready'?'ready':'loading',false);
+    // Preserve the analyzer retry control while dictionary progress updates the same status bar.
+    setSystemStatus(message,bootAnalyzerFailed?'error':state==='error'?'error':state==='ready'?'ready':'loading',bootAnalyzerFailed);
     updateBootDictionaryProgress(message,state);
   }
   async function loadFullDictionary(force=false) {
