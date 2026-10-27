@@ -29,6 +29,18 @@ if (duplicates.size) failures.push(`Duplicate HTML id(s): ${[...duplicates].join
 
 const scriptBlocks = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
   .filter((m) => !/\bsrc\s*=/.test(m[1]));
+
+const siteDir = path.dirname(target);
+const iconPath = path.join(siteDir, 'app-icon.svg');
+const manifestPath = path.join(siteDir, 'manifest.webmanifest');
+if (!fs.existsSync(iconPath)) failures.push('Missing app-icon.svg.');
+if (!fs.existsSync(manifestPath)) failures.push('Missing manifest.webmanifest.');
+else {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    if (!Array.isArray(manifest.icons) || !manifest.icons.some((icon) => icon.src === './app-icon.svg')) failures.push('Manifest must reference ./app-icon.svg.');
+  } catch (error) { failures.push(`Invalid manifest.webmanifest: ${error.message}`); }
+}
 if (!scriptBlocks.length) failures.push('No inline JavaScript found.');
 
 if (failures.length) {

@@ -1,0 +1,20 @@
+{
+  "name": "読みやすい — лёгкое чтение японского",
+  "short_name": "読みやすい",
+  "description": "Спокойное чтение японских текстов с фуриганой и словарём.",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4eedf",
+  "theme_color": "#f4eedf",
+  "icons": [
+    {
+      "src": "./app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

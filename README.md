@@ -10,8 +10,10 @@ Expected URL: https://the-trvlr.github.io/yomiyasui/
 
 ## Project layout
 
-- `site/index.html` — the single-file application.
-- `scripts/check-html.mjs` — lightweight CI checks for HTML structure, duplicate IDs, and inline JavaScript syntax.
+- `site/index.html` — the application, first-run progress screen, and reader UI.
+- `site/app-icon.svg` and `site/manifest.webmanifest` — app identity and install metadata.
+- `site/analyzer-worker.js` — Japanese analysis in a background worker.
+- `scripts/check-html.mjs` — CI checks for page structure and JavaScript syntax.
 - `.github/workflows/ci-cd.yml` — validation and Pages deployment pipeline.
 
 ## Local development
@@ -50,7 +52,7 @@ Do not add books, private reading logs, dictionary caches, credentials, or other
 
 ## Dictionary data and bundled runtime assets
 
-The GitHub Pages build downloads pinned copies of Kuromoji, JSZip, and the JMdict-Simplified English/Russian archives, then includes them in the published `site/` artifact. The browser loads these assets from the same site origin rather than from third-party CDNs or release URLs. The archive files are cached in IndexedDB when available.
+The GitHub Pages build downloads pinned copies of Kuromoji, JSZip, and the JMdict-Simplified English/Russian archives, then includes them in the published `site/` artifact. The browser loads these assets from the same site origin rather than from third-party CDNs or release URLs. On first launch, the app shows progress while preparing the analyzer and dictionary index. Dictionary archives are cached in IndexedDB where supported, so they usually do not need to be downloaded again on later launches.
 
 JMdict-derived data is governed by the EDRDG license; the build includes a copy of the license alongside the dictionary archives. Kuromoji and JSZip license notices are included with their bundled files. Runtime assets are generated at deploy time and are not committed to the repository.
 

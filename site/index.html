@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>読みやすい — японское чтение · MVP 0.6</title>
+<title>読みやすい — лёгкое чтение японского</title>
+<link rel="icon" type="image/svg+xml" href="./app-icon.svg">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#f4eedf">
 <style>
   :root {
     color-scheme: light;
@@ -28,9 +31,11 @@
   .app { max-width: 1440px; min-height: 100vh; margin: 0 auto; padding: 22px clamp(14px, 3vw, 42px) 26px; }
   .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
   .brand { display: flex; gap: 13px; align-items: center; min-width: 0; }
-  .brand-mark { display: grid; place-items: center; width: 46px; height: 46px; flex: 0 0 auto; border: 1px solid rgba(126,103,74,.35); border-radius: 14px; background: #f8f3e9; color: #775f41; font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; font-size: 25px; box-shadow: 0 2px 8px rgba(50,40,20,.04); }
-  h1 { margin: 0; font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif; font-size: clamp(20px, 2.6vw, 27px); font-weight: 600; letter-spacing: .02em; }
-  .subtitle { margin-top: 3px; color: var(--muted); font-size: 12px; letter-spacing: .035em; }
+  .brand-logo { display:block; width:48px; height:48px; flex:0 0 auto; border-radius:15px; border:1px solid rgba(65,86,103,.18); box-shadow:0 3px 10px rgba(50,40,20,.07); }
+  .brand-title-row { display:flex; align-items:baseline; flex-wrap:wrap; gap:9px; min-width:0; }
+  h1 { margin:0; font-family:"Yu Mincho","Hiragino Mincho ProN",Georgia,serif; font-size:clamp(20px,2.6vw,27px); font-weight:600; letter-spacing:.02em; }
+  .brand-version { display:inline-flex; align-items:center; padding:3px 7px; border:1px solid rgba(112,91,61,.2); border-radius:999px; color:#8b7a60; font:500 10px/1.2 Inter,ui-sans-serif,system-ui,sans-serif; letter-spacing:.02em; }
+  .brand-translation { color:#8b7a60; font-size:.58em; font-weight:400; letter-spacing:0; }
   .top-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
   .button { border: 1px solid rgba(105,83,55,.27); border-radius: 999px; background: rgba(255,252,245,.72); color: #504431; padding: 10px 15px; transition: background .15s, transform .15s; }
   .button:hover { background: #fffaf0; }
@@ -248,17 +253,57 @@
     .reader-column .controls { grid-template-columns: 1fr 1fr; }
   }
 
+  .boot-splash { position:fixed; inset:0; z-index:10000; display:grid; place-items:center; padding:24px; background:radial-gradient(ellipse at 14% 16%,rgba(231,162,151,.18),transparent 32%),radial-gradient(ellipse at 86% 78%,rgba(62,94,119,.13),transparent 34%),#f4eedf; opacity:1; transition:opacity .38s ease; }
+  .boot-splash[hidden] { display:none !important; } .boot-splash.closing { opacity:0; pointer-events:none; }
+  .boot-card { width:min(100%,480px); padding:clamp(25px,5vw,42px); border:1px solid rgba(112,91,61,.2); border-radius:26px; background:rgba(255,251,242,.94); box-shadow:0 24px 70px rgba(61,48,30,.13); }
+  .boot-brand { display:flex; align-items:center; gap:14px; } .boot-logo { width:60px; height:60px; border-radius:18px; box-shadow:0 4px 14px rgba(50,40,20,.08); }
+  .boot-brand-name { display:flex; align-items:baseline; flex-wrap:wrap; gap:9px; color:#293f53; font-family:"Yu Mincho","Hiragino Mincho ProN",Georgia,serif; font-size:25px; font-weight:600; letter-spacing:.02em; }
+  .boot-version { padding:3px 7px; border:1px solid rgba(58,87,111,.2); border-radius:999px; color:#728499; font:500 10px/1.2 Inter,ui-sans-serif,system-ui,sans-serif; }
+  .boot-eyebrow { margin:24px 0 7px; color:#bd7972; font-size:10px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; }
+  .boot-card h2 { margin:0; color:#2f4356; font-family:"Yu Mincho","Hiragino Mincho ProN",Georgia,serif; font-size:29px; font-weight:600; }
+  .boot-description { margin:9px 0 23px; color:#7b7d7b; font-size:13px; line-height:1.7; }
+  .boot-steps { display:grid; gap:13px; }
+  .boot-step { display:grid; grid-template-columns:28px minmax(0,1fr); gap:10px; align-items:start; }
+  .boot-step-icon { display:grid; place-items:center; width:26px; height:26px; border:1px solid rgba(70,94,112,.2); border-radius:50%; color:#a1a8aa; font-size:12px; background:rgba(255,255,255,.62); }
+  .boot-step.active .boot-step-icon { border-color:#456a89; color:#fff; background:#456a89; box-shadow:0 0 0 4px rgba(69,106,137,.1); }
+  .boot-step.done .boot-step-icon { border-color:#5d8567; color:#fff; background:#5d8567; }
+  .boot-step.error .boot-step-icon { border-color:#c36e68; color:#fff; background:#c36e68; }
+  .boot-step-title { color:#3e4b56; font-size:12px; font-weight:650; line-height:1.45; }
+  .boot-step-detail { margin-top:2px; color:#899097; font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
+  .boot-progress-block { margin-top:23px; } .boot-progress-track { height:7px; overflow:hidden; border-radius:99px; background:#e7e3dc; }
+  .boot-progress-bar { width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#365a77,#d7837b); transition:width .25s ease; }
+  .boot-progress-meta { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:9px; color:#657b8d; font-size:11px; }
+  .boot-progress-pct { color:#334d64; font-weight:700; font-variant-numeric:tabular-nums; }
+  .boot-note { margin:20px 0 0; padding-top:15px; border-top:1px solid rgba(112,91,61,.13); color:#8b877f; font-size:11px; line-height:1.65; }
+  .boot-continue { width:100%; margin-top:17px; }
+  @media (max-width:480px) { .boot-card { padding:25px 21px; border-radius:22px; } .boot-brand-name { font-size:22px; } .boot-card h2 { font-size:26px; } }
 </style>
 </head>
 <body>
+<div class="boot-splash" id="bootSplash" role="dialog" aria-modal="true" aria-labelledby="bootTitle" aria-describedby="bootDescription" hidden>
+  <section class="boot-card">
+    <div class="boot-brand"><img class="boot-logo" src="./app-icon.svg" alt=""><div class="boot-brand-name">読みやすい <span class="boot-version">v0.7</span></div></div>
+    <div class="boot-eyebrow">Первый запуск</div>
+    <h2 id="bootTitle">Готовим чтение</h2>
+    <p class="boot-description" id="bootDescription">Подключаем японский анализатор и словари, чтобы дальше всё работало прямо в читалке.</p>
+    <div class="boot-steps">
+      <div class="boot-step" id="bootAnalyzerStep"><span class="boot-step-icon" id="bootAnalyzerState" aria-hidden="true">○</span><div><div class="boot-step-title">Японский анализатор</div><div class="boot-step-detail" id="bootAnalyzerDetail">Подготовка файлов…</div></div></div>
+      <div class="boot-step" id="bootDictionaryStep"><span class="boot-step-icon" id="bootDictionaryState" aria-hidden="true">○</span><div><div class="boot-step-title">Словари JMdict</div><div class="boot-step-detail" id="bootDictionaryDetail">Начнётся после подключения анализатора</div></div></div>
+      <div class="boot-step" id="bootReadyStep"><span class="boot-step-icon" id="bootReadyState" aria-hidden="true">○</span><div><div class="boot-step-title">Подготовка приложения</div><div class="boot-step-detail" id="bootReadyDetail">Сохраним словари в локальный кэш браузера</div></div></div>
+    </div>
+    <div class="boot-progress-block">
+      <div class="boot-progress-track" id="bootProgressTrack" role="progressbar" aria-label="Подготовка приложения" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="boot-progress-bar" id="bootProgressBar"></div></div>
+      <div class="boot-progress-meta"><span id="bootProgressLabel">Подготовка файлов…</span><span class="boot-progress-pct" id="bootProgressPct">0%</span></div>
+    </div>
+    <p class="boot-note" id="bootNote">Это первичная подготовка. Файлы словарей сохраняются в этом браузере; при следующих запусках повторное скачивание обычно не требуется.</p>
+    <button class="button primary boot-continue" id="bootContinue" hidden>Продолжить без части функций</button>
+  </section>
+</div>
 <div class="app">
   <header class="topbar">
     <div class="brand">
-      <div class="brand-mark" aria-hidden="true">文</div>
-      <div>
-        <h1>読みやすい <span style="font-size:.58em;color:#8b7a60;font-weight:400">/ лёгкое чтение</span></h1>
-        <div class="subtitle">Японский текст · спокойный темп · MVP 0.6</div>
-      </div>
+      <img class="brand-logo" src="./app-icon.svg" alt="">
+      <div class="brand-title-row"><h1>読みやすい</h1><span class="brand-version">v0.7</span><span class="brand-translation">/ лёгкое чтение</span></div>
     </div>
     <div class="top-actions">
       <input class="file-input" id="filePicker" type="file" accept=".epub,.txt,.text,.md,.html,.htm,application/epub+zip,text/plain,text/html">
@@ -403,7 +448,6 @@
         </div>
       </div>
     </details>
-    <div class="footer-note">読みやすい MVP 0.6 · Читалка работает в браузере. Полный словарь JMdict загружается один раз и кешируется на устройстве, если браузер разрешает локальное хранилище.</div>
 </div>
 <script>
 (() => {
@@ -417,6 +461,12 @@
   const dictSearch = $('dictSearch'), dictSearchResults = $('dictSearchResults'), dictDetail = $('dictDetail'), dictMainView = $('dictMainView');
   const dictLoadStatus = $('dictLoadStatus'), dictFallback = $('dictFallback'), dictStateDot = $('dictStateDot');
   const dictFilePicker = $('dictFilePicker');
+  const bootSplash = $('bootSplash'), bootProgressTrack = $('bootProgressTrack'), bootProgressBar = $('bootProgressBar');
+  const bootProgressLabel = $('bootProgressLabel'), bootProgressPct = $('bootProgressPct'), bootContinue = $('bootContinue');
+  const BOOT_STORAGE_KEY = 'yomiyasui-first-setup-v1';
+  let firstSetupRequired = true, bootProgress = 0, bootAnalyzerReady = false, bootAnalyzerFailed = false, bootDictionaryReady = false, autoDictionaryStarted = false;
+  try { firstSetupRequired = localStorage.getItem(BOOT_STORAGE_KEY) !== 'done'; } catch (_) { firstSetupRequired = true; }
+  bootSplash.hidden = !firstSetupRequired;
   // Resolve assets against the application root, not the browser's current URL.
   // This remains correct even if a visitor opens /yomiyasui without its trailing slash.
   const APP_BASE_URL = (() => {
@@ -485,6 +535,58 @@
     systemStatus.textContent = message;
     systemIndicator.className = 'status-indicator' + (state === 'ready' ? ' ready' : state === 'error' ? ' error' : '');
     retryAnalyzer.hidden = !retry;
+  }
+  function setBootProgress(value,label,detail='') {
+    if (!firstSetupRequired || bootSplash.hidden) return;
+    bootProgress=Math.max(bootProgress,Math.max(0,Math.min(100,Number(value)||0)));
+    bootProgressBar.style.width=`${bootProgress}%`;
+    bootProgressTrack.setAttribute('aria-valuenow',String(Math.round(bootProgress)));
+    bootProgressPct.textContent=`${Math.round(bootProgress)}%`;
+    if(label) bootProgressLabel.textContent=label;
+    if(detail) $('bootDescription').textContent=detail;
+  }
+  function setBootStep(step,state,detail='') {
+    if(!firstSetupRequired || bootSplash.hidden) return;
+    const map={analyzer:['bootAnalyzerStep','bootAnalyzerState','bootAnalyzerDetail'],dictionary:['bootDictionaryStep','bootDictionaryState','bootDictionaryDetail'],ready:['bootReadyStep','bootReadyState','bootReadyDetail']};
+    const ids=map[step]; if(!ids) return;
+    const parent=$(ids[0]),icon=$(ids[1]),line=$(ids[2]);
+    parent.classList.remove('active','done','error'); if(state) parent.classList.add(state);
+    icon.textContent=state==='done'?'✓':state==='active'?'··':state==='error'?'!':'○';
+    if(detail) line.textContent=detail;
+  }
+  function completeFirstSetup() {
+    if(!firstSetupRequired || bootSplash.hidden || !bootAnalyzerReady || !bootDictionaryReady) return;
+    setBootStep('ready','done','Всё готово — можно читать');
+    setBootProgress(100,'Подготовка завершена','Анализатор и словари подключены. Приятного чтения!');
+    $('bootTitle').textContent='Всё готово'; $('bootDescription').textContent='Анализатор и словари подключены. Приятного чтения!';
+    try { localStorage.setItem(BOOT_STORAGE_KEY,'done'); } catch (_) {}
+    firstSetupRequired=false; bootSplash.classList.add('closing');
+    setTimeout(()=>{bootSplash.hidden=true;bootSplash.classList.remove('closing');},450);
+  }
+  function failFirstSetup(step,message) {
+    if(!firstSetupRequired || bootSplash.hidden) return;
+    setBootStep(step,'error',message);
+    $('bootTitle').textContent='Не всё удалось подключить';
+    $('bootDescription').textContent=message || 'Читалка останется доступна, но некоторые функции могут быть отключены.';
+    $('bootNote').textContent='Можно продолжить без неподключённой функции. Повторное подключение доступно в строке состояния и настройках словаря.';
+    bootProgressLabel.textContent='Нужно внимание'; bootContinue.hidden=false; bootContinue.textContent='Продолжить чтение';
+  }
+  function updateBootDictionaryProgress(message,state='loading') {
+    if(!firstSetupRequired || bootSplash.hidden) return;
+    let p=56;
+    if(/Скачиваю JMdict|Скачиваю EN|Скачиваю RU/i.test(message)) {
+      const ru=/RU|русском/i.test(message),m=message.match(/:\s*([\d.,]+)\s*\/\s*([\d.,]+)\s*МБ/i);
+      if(m) {const cur=Number(m[1].replace(',','.')),tot=Number(m[2].replace(',','.'))||(ru?4:11);p=(ru?71:57)+Math.min(1,cur/tot)*(ru?8:12);} else p=ru?71:57;
+    } else if(/кэш/i.test(message)) p=68;
+    else if(/Готовлю полный английский/i.test(message)) p=55;
+    else if(/Распаковываю словарь EN/i.test(message)) p=70;
+    else if(/Распаковываю словарь RU/i.test(message)) p=82;
+    else if(/Индексирую JMdict EN/i.test(message)) {const m=message.match(/([\d\s.,]+)\s*\/\s*([\d\s.,]+)/);p=m?72+Math.min(1,Number(m[1].replace(/[\s,]/g,''))/Math.max(1,Number(m[2].replace(/[\s,]/g,''))))*8:74;}
+    else if(/Подключаю русские переводы:/i.test(message)) {const m=message.match(/([\d\s.,]+)\s*\/\s*([\d\s.,]+)/);p=m?83+Math.min(1,Number(m[1].replace(/[\s,]/g,''))/Math.max(1,Number(m[2].replace(/[\s,]/g,''))))*7:84;}
+    else if(/Индексирую объединённый/i.test(message)) p=89;
+    else if(/Индексирую словарь:/i.test(message)) {const m=message.match(/([\d\s.,]+)\s*\/\s*([\d\s.,]+)/);p=m?90+Math.min(1,Number(m[1].replace(/[\s,]/g,''))/Math.max(1,Number(m[2].replace(/[\s,]/g,''))))*8:91;}
+    else if(state==='ready') p=99;
+    setBootStep('dictionary',state==='ready'?'done':'active',message); setBootProgress(p,'Подготовка словарей',message);
   }
   function loadKnownWords() {
     try { return new Set(JSON.parse(localStorage.getItem('kotoba-known-words-v02') || '[]')); }
@@ -894,13 +996,14 @@
           const message = event.data || {};
           if (message.type === 'ready') {
             if (settled) return;
-            settled = true;
-            clearTimeout(initTimer);
-            resolve({ tokenize: text => requestWorkerTokenization(worker, text) });
-            return;
+            settled = true; clearTimeout(initTimer);
+            setBootProgress(48,'Анализатор готов','Обрабатываю демонстрационный текст перед подключением словарей…');
+            resolve({ tokenize: text => requestWorkerTokenization(worker, text) }); return;
           }
           if (message.type === 'init-progress') {
-            setSystemStatus(message.message || 'Инициализирую японский анализатор…');
+            const detail=message.message || 'Инициализирую японский анализатор…'; setSystemStatus(detail);
+            const n=Number(message.progress)||0,total=Number(message.total)||12;
+            setBootStep('analyzer','active',detail); setBootProgress(5+Math.min(1,n/total)*42,'Подключение анализатора',detail);
             return;
           }
           if (message.type === 'init-error') {
@@ -999,6 +1102,21 @@
     reader.classList.toggle('has-text', copy.textContent.trim().length > 0);
     updateTransform(); updateSeekUI();
   }
+  function startAutomaticDictionaryLoad() {
+    if(autoDictionaryStarted || dictionaryLoaded) return;
+    autoDictionaryStarted=true;
+    setBootStep('dictionary','active','Загружаю английский и русский JMdict…');
+    setBootProgress(Math.max(52,bootProgress),'Подготовка словарей','Подключаю переводы и подготавливаю индекс поиска. При первом запуске это займёт немного времени.');
+    loadFullDictionary().then(ok=>{
+      if(ok) {
+        bootDictionaryReady=true;
+        setBootStep('dictionary','done',`Готово · ${dictionaryEntries.length.toLocaleString('ru-RU')} записей`);
+        setBootStep('ready','active','Завершаю подготовку');
+        if(bootAnalyzerReady) completeFirstSetup();
+        else failFirstSetup('analyzer','Словарь готов, но анализатор не подключился. Можно продолжить чтение без автоматической фуриганы.');
+      } else failFirstSetup('dictionary',dictLoadStatus.textContent || 'Не удалось подключить словари.');
+    }).catch(err=>{console.warn('Automatic JMdict setup failed:',err);failFirstSetup('dictionary',err?.message || 'Не удалось подключить словари.');});
+  }
   async function applyText(text, opts={}) {
     const version = ++renderVersion;
     const clean = String(text || '').replace(/\r\n?/g, '\n').trim();
@@ -1035,11 +1153,17 @@
       if (version !== renderVersion) return;
       renderAnalyzedText(); await restore();
       setSystemStatus(`Анализ готов · ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз. · нажимай на слово для поиска в словаре`, 'ready');
+      bootAnalyzerReady=true; setBootStep('analyzer','done','Анализатор подключён и готов к работе');
+      setBootProgress(Math.max(50,bootProgress),'Анализатор готов','Теперь загружаются словари, чтобы поиск и переводы работали без ручной настройки.');
+      startAutomaticDictionaryLoad();
     } catch (err) {
       if (version !== renderVersion) return;
-      renderAnalyzedText(); await restore();
+      renderAnalyzedText(); await restore(); bootAnalyzerFailed=true;
       setSystemStatus('Не удалось загрузить анализатор из локальных файлов приложения. Текст доступен, но фуригана и выбор слов пока недоступны. Попробуй повторить подключение.', 'error', true);
+      setBootStep('analyzer','error',err?.message || 'Анализатор не запустился');
+      setBootProgress(Math.max(48,bootProgress),'Анализатор не подключился','Продолжаю подготовку словаря. Можно будет продолжить чтение и повторить подключение анализатора позже.');
       console.warn('Kuromoji initialization failed:', err);
+      startAutomaticDictionaryLoad();
     }
   }
 
@@ -1245,7 +1369,7 @@
     if(!language) language=/jmdict-rus|rus/i.test(fileName) ? 'rus' : 'eng';
     return {data,language};
   }
-  async function ingestDictionary(data, language, statusLabel='') {
+  async function ingestDictionary(data, language, statusLabel='', rebuildIndex=true) {
     if (language === 'eng') {
       const words=data.words || [];
       for(let i=0;i<words.length;i++) {
@@ -1278,7 +1402,7 @@
     }
     // Release the large source object as soon as its compact entries have been extracted.
     try { data.words.length=0; } catch (_) {}
-    await updateDictionaryIndex();
+    if(rebuildIndex) await updateDictionaryIndex();
     if(statusLabel) updateDictStatus(statusLabel, 'ready');
   }
   async function updateDictionaryIndex() {
@@ -1311,13 +1435,10 @@
     if(currentWord) showWordInDictionary(currentWord, true);
   }
   function updateDictStatus(message, state='loading') {
-    dictLoadStatus.textContent=message;
-    dictStateDot.classList.toggle('ready',state==='ready');
-    dictStateDot.classList.toggle('error',state==='error');
-    // Setup details remain collapsed during normal reading; expose the latest status on hover.
-    dictStateDot.title=message;
-    dictStateDot.setAttribute('aria-label',message);
+    dictLoadStatus.textContent=message; dictStateDot.classList.toggle('ready',state==='ready'); dictStateDot.classList.toggle('error',state==='error');
+    dictStateDot.title=message; dictStateDot.setAttribute('aria-label',message);
     if(state==='ready') dictFallback.hidden=true;
+    updateBootDictionaryProgress(message,state);
   }
   async function loadFullDictionary(force=false) {
     if(dictionaryLoadingPromise) return dictionaryLoadingPromise;
@@ -1332,8 +1453,10 @@
           const buffer=await fetchArchive(language);
           updateDictStatus(`Распаковываю словарь ${language.toUpperCase()}…`);
           const parsed=await parseDictionaryArchive(buffer,language,`jmdict-${language}-${JM_VERSION}.json`);
-          await ingestDictionary(parsed.data, language, language==='rus' ? 'JMdict подключён · русский + английский' : 'Английская база загружена');
+          await ingestDictionary(parsed.data, language, '', false);
         }
+        updateDictStatus('Индексирую объединённый словарь…');
+        await updateDictionaryIndex();
         dictionaryLoaded=true; dictionaryLoadFailed=false;
         updateDictStatus(`Полный JMdict · ${dictionaryEntries.length.toLocaleString('ru-RU')} записей · русский + английский`,'ready');
         dictFallback.hidden=true;
@@ -1679,8 +1802,9 @@
     if(button) button.textContent=knownWords.has(currentWord.key)?'✓ Известно — снять':'✓ Отметить как известное';
     renderAnalyzedText();
   });
+  bootContinue.addEventListener('click',()=>{bootSplash.hidden=true;bootSplash.classList.remove('closing');});
   retryAnalyzer.addEventListener('click', async () => {
-    tokenizer = null; tokenizerPromise = null;
+    resetAnalyzerWorker(); bootAnalyzerFailed=false;
     await applyText(textInput.value, {retry:true,preservePosition:true});
   });
   copy.addEventListener('click', event => {
