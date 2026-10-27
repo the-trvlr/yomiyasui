@@ -357,7 +357,7 @@
           <summary>Настройки словаря и загрузка файлов</summary>
           <div class="dictionary-settings-body">
             <div class="dict-load-row">
-              <span class="dict-load-status" id="dictLoadStatus">Подключаю полный словарь…</span>
+              <span class="dict-load-status" id="dictLoadStatus">Полный словарь не загружен</span>
               <button class="button tiny" id="loadDictionary">Загрузить / повторить</button>
             </div>
             <div class="dict-fallback" id="dictFallback" hidden>
@@ -444,7 +444,6 @@
   let dictionaryById = new Map(), dictionaryEntries = [], formIndex = new Map(), prefixIndex = new Map();
   let dictionaryLoaded = false, dictionaryLoadingPromise = null, dictionaryLoadFailed = false, dictionarySearchTimer = 0;
   let dictionaryDBPromise = null, dictionaryLastQuery = '', activeDictionaryEntryId = null, dictionaryView = 'results';
-  let dictionaryAutoLoadTimer = 0;
 
   const sample = `静かな夜だった。窓の外では、細い雨が降り続いていた。
 
@@ -456,6 +455,8 @@
 
   let offset = 0, lastTime = 0, rafId = 0, isPlaying = false, isFinished = false;
   let tokenizer = null, tokenizerPromise = null, jsZipPromise = null, renderVersion = 0;
+  let tokenizerWorker = null, analyzerRequestId = 0;
+  const analyzerPendingRequests = new Map();
   const baseReadingCache = new Map();
   let analyzedParagraphs = [], currentWord = null, currentBookName = '';
   let currentBookId = null, currentBookRecord = null, libraryDBPromise = null;
@@ -504,17 +505,11 @@
   function dictionaryKey(token) {
     const base = token?.basic_form && token.basic_form !== '*' ? token.basic_form : (token?.surface_form || '');
     let reading = token?.reading && token.reading !== '*' ? toHiragana(token.reading) : '';
-    // Inflected forms (e.g. 読んだ) should share the known flag of their lemma (読む).
-    // Resolve and cache the lemma's canonical reading so homographs can still stay distinct.
-    if (tokenizer && base && base !== token?.surface_form) {
-      if (!baseReadingCache.has(base)) {
-        try {
-          const baseTokens = tokenizer.tokenize(base);
-          const canonical = baseTokens.map(t => t.reading && t.reading !== '*' ? t.reading : '').join('');
-          baseReadingCache.set(base, canonical ? toHiragana(canonical) : reading);
-        } catch (_) { baseReadingCache.set(base, reading); }
-      }
-      reading = baseReadingCache.get(base) || reading;
+    // The worker supplies a canonical reading for inflected forms without blocking the UI thread.
+    if (base && base !== token?.surface_form) {
+      const canonical = token?.canonical_reading || baseReadingCache.get(base);
+      if (token?.canonical_reading) baseReadingCache.set(base, toHiragana(token.canonical_reading));
+      if (canonical) reading = toHiragana(canonical);
     }
     return `${base}\u241f${reading}`;
   }
@@ -843,48 +838,106 @@
       document.head.appendChild(script);
     });
   }
-  async function verifyTokenizerAssets() {
-    const files = [
-      'base.dat.gz', 'cc.dat.gz', 'check.dat.gz', 'tid.dat.gz',
-      'tid_map.dat.gz', 'tid_pos.dat.gz', 'unk.dat.gz',
-      'unk_char.dat.gz', 'unk_compat.dat.gz', 'unk_invoke.dat.gz',
-      'unk_map.dat.gz', 'unk_pos.dat.gz'
-    ];
-    const checks = await Promise.all(files.map(async (file) => {
-      const url = new URL(file, KUROMOJI_DICT).href;
-      let response;
+  function rejectPendingAnalyzerRequests(error) {
+    for (const [id, pending] of analyzerPendingRequests) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+      analyzerPendingRequests.delete(id);
+    }
+  }
+  function resetAnalyzerWorker() {
+    if (tokenizerWorker) {
+      tokenizerWorker.onmessage = null;
+      tokenizerWorker.onerror = null;
+      tokenizerWorker.terminate();
+      tokenizerWorker = null;
+    }
+    rejectPendingAnalyzerRequests(new Error('Запрос анализа отменён.'));
+    tokenizer = null;
+    tokenizerPromise = null;
+  }
+  function requestWorkerTokenization(worker, text) {
+    const id = ++analyzerRequestId;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        analyzerPendingRequests.delete(id);
+        reject(new Error('Worker не завершил анализ абзаца за 60 секунд.'));
+      }, 60000);
+      analyzerPendingRequests.set(id, { resolve, reject, timer });
       try {
-        response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+        worker.postMessage({ type: 'tokenize', id, text: String(text || '') });
       } catch (err) {
-        throw new Error(`Не удаётся проверить файл анализатора ${file}: ${err?.message || 'ошибка сети'}`);
+        clearTimeout(timer);
+        analyzerPendingRequests.delete(id);
+        reject(err);
       }
-      if (!response.ok) throw new Error(`Файл анализатора недоступен: ${file} (HTTP ${response.status})`);
-      return file;
-    }));
-    return checks;
+    });
   }
   async function ensureTokenizer(force=false) {
+    if (force) resetAnalyzerWorker();
     if (tokenizer) return tokenizer;
-    if (force) { tokenizerPromise = null; }
-    if (!tokenizerPromise) tokenizerPromise = (async () => {
-      setSystemStatus('Проверяю локальные файлы японского анализатора…');
-      await verifyTokenizerAssets();
-      setSystemStatus('Загружаю японский анализатор из приложения…');
-      await loadScript(KUROMOJI_URL, 'kuromoji');
-      return await new Promise((resolve, reject) => {
+    if (!tokenizerPromise) {
+      tokenizerPromise = new Promise((resolve, reject) => {
         let settled = false;
-        const finish = (err, instance) => {
+        const worker = new Worker(appAssetUrl('analyzer-worker.js'));
+        tokenizerWorker = worker;
+        const initTimer = setTimeout(() => {
+          failInit(new Error('Worker анализатора не завершился за 120 секунд. Страница остаётся доступной; можно повторить подключение.'));
+        }, 120000);
+        function failInit(error) {
           if (settled) return;
           settled = true;
-          clearTimeout(timer);
-          if (err) reject(err); else resolve(instance);
+          clearTimeout(initTimer);
+          reject(error);
+        }
+        worker.onmessage = event => {
+          const message = event.data || {};
+          if (message.type === 'ready') {
+            if (settled) return;
+            settled = true;
+            clearTimeout(initTimer);
+            resolve({ tokenize: text => requestWorkerTokenization(worker, text) });
+            return;
+          }
+          if (message.type === 'init-error') {
+            failInit(new Error(message.error || 'Не удалось запустить японский анализатор.'));
+            return;
+          }
+          if (message.id != null) {
+            const pending = analyzerPendingRequests.get(message.id);
+            if (!pending) return;
+            clearTimeout(pending.timer);
+            analyzerPendingRequests.delete(message.id);
+            if (message.type === 'tokenized') pending.resolve(message.tokens || []);
+            else pending.reject(new Error(message.error || 'Ошибка анализа текста.'));
+          }
         };
-        const timer = setTimeout(() => finish(new Error('Kuromoji не завершил разбор словаря за 90 секунд. Проверь вкладку Network: запросы к vendor/kuromoji/dict/ должны возвращать 200.')), 90000);
-        try {
-          window.kuromoji.builder({ dicPath: KUROMOJI_DICT }).build((err, instance) => finish(err, instance));
-        } catch (err) { finish(err); }
+        worker.onerror = event => {
+          const error = new Error('Ошибка worker анализатора: ' + (event.message || 'неизвестная ошибка'));
+          failInit(error);
+          rejectPendingAnalyzerRequests(error);
+          if (tokenizerWorker === worker) {
+            worker.terminate();
+            tokenizerWorker = null;
+            tokenizer = null;
+            tokenizerPromise = null;
+          }
+        };
+        worker.postMessage({ type: 'init', scriptUrl: KUROMOJI_URL, dictPath: KUROMOJI_DICT });
+      }).then(api => {
+        tokenizer = api;
+        return api;
+      }).catch(err => {
+        if (tokenizerWorker) {
+          tokenizerWorker.terminate();
+          tokenizerWorker = null;
+        }
+        rejectPendingAnalyzerRequests(err);
+        tokenizer = null;
+        tokenizerPromise = null;
+        throw err;
       });
-    })().then(instance => { tokenizer = instance; return instance; }).catch(err => { tokenizerPromise = null; throw err; });
+    }
     return tokenizerPromise;
   }
   async function ensureJSZip() {
@@ -969,7 +1022,7 @@
       for (let i = 0; i < analyzedParagraphs.length; i++) {
         if (version !== renderVersion) return;
         const item = analyzedParagraphs[i];
-        try { item.tokens = tok.tokenize(item.text); } catch (_) { item.tokens = null; }
+        try { item.tokens = await tok.tokenize(item.text); } catch (_) { item.tokens = null; }
         if (i % 20 === 0) {
           setSystemStatus(`Разбираю японский текст: ${Math.min(i+1, analyzedParagraphs.length).toLocaleString('ru-RU')} / ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз.…`);
           await new Promise(resolve => requestAnimationFrame(() => resolve()));
@@ -978,12 +1031,10 @@
       if (version !== renderVersion) return;
       renderAnalyzedText(); await restore();
       setSystemStatus(`Анализ готов · ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз. · нажимай на слово для поиска в словаре`, 'ready');
-      scheduleDictionaryLoad();
     } catch (err) {
       if (version !== renderVersion) return;
       renderAnalyzedText(); await restore();
       setSystemStatus('Не удалось загрузить анализатор из локальных файлов приложения. Текст доступен, но фуригана и выбор слов пока недоступны. Попробуй повторить подключение.', 'error', true);
-      scheduleDictionaryLoad();
       console.warn('Kuromoji initialization failed:', err);
     }
   }
@@ -1264,13 +1315,6 @@
     dictStateDot.setAttribute('aria-label',message);
     if(state==='ready') dictFallback.hidden=true;
   }
-  function scheduleDictionaryLoad(delay=700) {
-    if(dictionaryLoaded || dictionaryLoadingPromise || dictionaryAutoLoadTimer) return;
-    dictionaryAutoLoadTimer=setTimeout(() => {
-      dictionaryAutoLoadTimer=0;
-      if(!dictionaryLoaded && !dictionaryLoadingPromise) loadFullDictionary();
-    }, delay);
-  }
   async function loadFullDictionary(force=false) {
     if(dictionaryLoadingPromise) return dictionaryLoadingPromise;
     if(dictionaryLoaded && !force) { updateDictStatus(`JMdict подключён · ${dictionaryEntries.length.toLocaleString('ru-RU')} записей`,'ready'); return; }
@@ -1517,7 +1561,7 @@
       dictionaryLastQuery=normalizeSearch(dictSearch.value);
     }
     if(!dictionaryEntries.length) {
-      showWordFallback(target, 'Полный JMdict ещё загружается. Значение появится здесь после подключения словаря.');
+      showWordFallback(target, 'Полный JMdict пока не загружен. Открой настройки словаря справа и нажми «Загрузить / повторить».');
       return;
     }
     const exact=findEntryForContext(target);
@@ -1553,7 +1597,7 @@
     currentWord=wordContext; activeDictionaryEntryId=null;
     showWordFallback(wordContext,'Ищу словарную запись…');
     showWordInDictionary(wordContext);
-    if(!dictionaryEntries.length) loadFullDictionary().then(()=>showWordInDictionary(wordContext,true));
+    // Never load the large dictionary implicitly on a word click: that operation is user-triggered.
   }
   playPause.addEventListener('click', togglePlayback);
   restart.addEventListener('click', resetReader);
