@@ -431,7 +431,7 @@
     }
     return new URL(basePath, window.location.origin);
   })();
-  const appAssetUrl = (path) => new URL(String(path).replace(/^\\/+/, ''), APP_BASE_URL).href;
+  const appAssetUrl = (path) => new URL(String(path).replace(/^\/+/, ''), APP_BASE_URL).href;
   const KUROMOJI_URL = appAssetUrl('vendor/kuromoji/build/kuromoji.js');
   const KUROMOJI_DICT = appAssetUrl('vendor/kuromoji/dict/');
   const JSZIP_URL = appAssetUrl('vendor/jszip/dist/jszip.min.js');
