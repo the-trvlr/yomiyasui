@@ -8,3 +8,8 @@ Thumbs.db
 node_modules/
 dist/
 coverage/
+
+# Generated runtime assets (downloaded by the Pages build or local setup)
+site/vendor/
+site/data/jmdict-*.json.zip
+site/data/EDRDG-LICENSE.html
