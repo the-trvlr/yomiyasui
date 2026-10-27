@@ -16,7 +16,14 @@ function initialize(message) {
       throw new Error('Kuromoji API не найден в worker.');
     }
 
-    self.kuromoji.builder({ dicPath: message.dictPath }).build((err, instance) => {
+    // Kuromoji internally calls path.join(dicPath, filename). Absolute URLs
+    // are corrupted by that call (https:// -> https:/), so pass only the URL pathname.
+    const dictionaryUrl = new URL(message.dictPath, self.location.href);
+    let dicPath = dictionaryUrl.pathname;
+    if (!dicPath.endsWith('/')) dicPath += '/';
+
+    self.postMessage({ type: 'init-progress', message: 'Загружаю словарные таблицы Kuromoji…' });
+    self.kuromoji.builder({ dicPath }).build((err, instance) => {
       if (err) {
         self.postMessage({ type: 'init-error', error: err.message || String(err) });
         return;
