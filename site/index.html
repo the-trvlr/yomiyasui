@@ -899,6 +899,10 @@
             resolve({ tokenize: text => requestWorkerTokenization(worker, text) });
             return;
           }
+          if (message.type === 'init-progress') {
+            setSystemStatus(message.message || 'Инициализирую японский анализатор…');
+            return;
+          }
           if (message.type === 'init-error') {
             failInit(new Error(message.error || 'Не удалось запустить японский анализатор.'));
             return;
