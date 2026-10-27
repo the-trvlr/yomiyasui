@@ -322,7 +322,7 @@
     .chapter-tools .button { flex: 0 0 auto; padding: 6px 8px; font-size: 10px; }
     .chapter-select, .bookmark-select { flex: 0 0 auto; min-width: 78px; max-width: 138px; padding: 6px 7px; font-size: 10px; }
 
-    .reader-shell { height: clamp(300px, calc(100dvh - 260px), 820px); min-height: min(300px, 42dvh); max-height: 820px; border-radius: 13px; }
+    .reader-shell { height: 56vh; height: 56svh; min-height: 320px; max-height: 620px; flex: 0 0 auto; border-radius: 13px; }
     .reader-topline { top: 11px; left: 12px; right: 12px; font-size: 9px; }
     .reader-copy { width: min(calc(var(--line-chars) * 1em), calc(100vw - 34px)); }
     .seek-row { margin: 6px 3px 0; gap: 6px; }
@@ -344,11 +344,13 @@
       position: fixed; z-index: 998; left: 12px; right: 12px;
       bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
       display: flex; align-items: center; justify-content: center; gap: 12px;
-      margin: 0; padding: 7px 12px; border: 1px solid rgba(112,91,61,.18);
-      border-radius: 17px; background: rgba(250,246,237,.96);
+      margin: 0; padding: 5px 9px; border: 1px solid rgba(112,91,61,.18);
+      border-radius: 15px; background: rgba(250,246,237,.96);
       box-shadow: 0 6px 22px rgba(65,50,29,.12); backdrop-filter: blur(12px); grid-column: auto;
     }
-    .mobile-settings-quick { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid rgba(105,83,55,.23); border-radius: 50%; background: #f9f4e8; color: #66543a; font-size: 13px; font-weight: 650; }
+    .controls .transport .round-button, .mobile-settings-quick { width: 38px; height: 38px; min-width: 38px; }
+    .mobile-settings-quick { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 9px; width: auto; min-width: 68px; border: 1px solid rgba(105,83,55,.23); border-radius: 22px; background: #f9f4e8; color: #66543a; font-size: 12px; font-weight: 650; }
+    .quick-settings-caption { font-size: 10px; font-weight: 550; }
     body.mobile-dictionary-open .controls .transport,
     body.mobile-settings-open .controls .transport { display: none; }
 
@@ -396,6 +398,8 @@
   }
   @media (prefers-reduced-motion: reduce) { .dictionary { transition: none; } }
   @media (min-width: 681px) { .mobile-dictionary-fab { display: none !important; } }
+  /* The editor is already accessible from the two primary actions in the header. */
+  details.editor { display: none; }
 
 </style>
 </head>
@@ -472,7 +476,7 @@
 
     <section class="controls" aria-label="Настройки чтения">
       <details class="mobile-settings" id="mobileSettings" open>
-        <summary>Настройки чтения <span class="mobile-settings-note">Шрифт · интервалы · фуригана</span></summary>
+        <summary>Настройки чтения <span class="mobile-settings-note">Скорость · шрифт · интервалы · фуригана</span></summary>
         <div class="mobile-settings-grid">
       <div class="control">
         <div class="control-head"><label for="speed">Скорость</label><span class="value" id="speedValue">28 px/с</span></div>
@@ -508,7 +512,7 @@
       <div class="transport">
         <button class="round-button" id="playPause" title="Запустить / пауза" aria-label="Запустить">▶</button>
         <button class="round-button secondary" id="restart" title="Начать сначала" aria-label="Начать сначала">↺</button>
-        <button class="mobile-settings-quick" id="mobileSettingsQuick" type="button" title="Настройки чтения" aria-label="Открыть настройки чтения">Aa</button>
+        <button class="mobile-settings-quick" id="mobileSettingsQuick" type="button" title="Скорость и настройки чтения" aria-label="Открыть настройки скорости и чтения"><span aria-hidden="true">Aa</span><span class="quick-settings-caption">Скорость</span></button>
       </div>
     </section>
 
