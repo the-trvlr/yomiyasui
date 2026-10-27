@@ -833,7 +833,7 @@
     if (tokenizer) return tokenizer;
     if (force) { tokenizerPromise = null; }
     if (!tokenizerPromise) tokenizerPromise = (async () => {
-      setSystemStatus('Загружаю японский анализатор и его словарные файлы… При первом запуске может понадобиться несколько секунд.');
+      setSystemStatus('Загружаю японский анализатор и встроенные файлы из приложения…');
       await loadScript(KUROMOJI_URL, 'kuromoji');
       return await new Promise((resolve, reject) => {
         let settled = false;
@@ -1246,6 +1246,7 @@
         for(const language of ['eng','rus']) {
           updateDictStatus(language==='eng' ? 'Готовлю полный английский JMdict…' : 'Добавляю русские переводы…');
           const buffer=await fetchArchive(language);
+          updateDictStatus(`Распаковываю словарь ${language.toUpperCase()}…`);
           const parsed=await parseDictionaryArchive(buffer,language,`jmdict-${language}-${JM_VERSION}.json`);
           await ingestDictionary(parsed.data, language, language==='rus' ? 'JMdict подключён · русский + английский' : 'Английская база загружена');
         }
