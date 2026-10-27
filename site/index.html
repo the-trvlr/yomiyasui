@@ -277,6 +277,113 @@
   .boot-note { margin:20px 0 0; padding-top:15px; border-top:1px solid rgba(112,91,61,.13); color:#8b877f; font-size:11px; line-height:1.65; }
   .boot-continue { width:100%; margin-top:17px; }
   @media (max-width:480px) { .boot-card { padding:25px 21px; border-radius:22px; } .boot-brand-name { font-size:22px; } .boot-card h2 { font-size:26px; } }
+
+  /* Mobile reading mode: a reader-first layout with a collapsible dictionary sheet. */
+  .mobile-shelf-toggle, .mobile-dict-toggle, .mobile-settings-quick { display: none; }
+  .controls .mobile-settings { display: contents; }
+  .controls .mobile-settings > summary { display: none; }
+  .controls .mobile-settings-grid { display: contents; }
+
+  @media (max-width: 680px) {
+    .app {
+      padding: 10px 8px calc(150px + env(safe-area-inset-bottom, 0px));
+      min-height: 100dvh;
+    }
+    .topbar { align-items: center; flex-direction: row; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .brand { flex: 1 1 auto; gap: 8px; }
+    .brand-logo { width: 36px; height: 36px; border-radius: 11px; }
+    .brand-title-row { gap: 6px; }
+    h1 { font-size: 20px; }
+    .brand-version { padding: 2px 6px; font-size: 9px; }
+    .brand-translation { display: none; }
+    .top-actions { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; justify-content: stretch; }
+    .top-actions .button { min-width: 0; padding: 8px 9px; font-size: 11px; white-space: nowrap; }
+    .status-bar { margin: 0 0 8px; min-height: 20px; gap: 5px; font-size: 10px; line-height: 1.4; }
+    .status-bar .status-main { min-width: 0; gap: 6px; }
+    #systemStatus { overflow-wrap: anywhere; }
+    .book-shelf { margin: 0 0 8px; padding: 8px 10px; border-radius: 11px; }
+    .shelf-head { gap: 7px; margin-bottom: 7px; }
+    .shelf-title { font-size: 14px; white-space: nowrap; }
+    .shelf-count { margin-left: auto; font-size: 10px; white-space: nowrap; }
+    .mobile-shelf-toggle { display: inline-flex; flex: 0 0 auto; padding: 5px 8px; font-size: 10px; white-space: nowrap; }
+    .book-shelf.mobile-collapsed .shelf-grid { display: none; }
+    .book-shelf.mobile-collapsed .shelf-head { margin-bottom: 0; }
+    .shelf-grid { gap: 7px; }
+    .book-card { flex-basis: 190px; }
+
+    .workspace { gap: 10px; }
+    .reader-column { display: flex; flex-direction: column; min-width: 0; }
+    .book-navigation { align-items: stretch; flex-direction: column; gap: 5px; margin: 0 0 7px; padding: 7px 8px; border-radius: 10px; }
+    .book-current { width: 100%; }
+    .book-current-title { font-size: 11px; }
+    .book-current-meta { display: none; }
+    .chapter-tools { width: 100%; justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; gap: 5px; padding-bottom: 1px; scrollbar-width: none; }
+    .chapter-tools::-webkit-scrollbar { display: none; }
+    .chapter-tools .button { flex: 0 0 auto; padding: 6px 8px; font-size: 10px; }
+    .chapter-select, .bookmark-select { flex: 0 0 auto; min-width: 78px; max-width: 138px; padding: 6px 7px; font-size: 10px; }
+
+    .reader-shell { height: clamp(360px, calc(100dvh - 340px), 760px); min-height: 360px; max-height: 760px; border-radius: 13px; }
+    .reader-topline { top: 11px; left: 12px; right: 12px; font-size: 9px; }
+    .reader-copy { width: min(calc(var(--line-chars) * 1em), calc(100vw - 34px)); }
+    .seek-row { margin: 6px 3px 0; gap: 6px; }
+    .reader-help { display: none; }
+
+    .controls { display: block; margin-top: 7px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+    .controls .mobile-settings { display: block; margin: 0; overflow: hidden; border: 1px solid rgba(112,91,61,.18); border-radius: 12px; background: rgba(250,246,237,.86); }
+    .controls .mobile-settings > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 11px 13px; list-style: none; cursor: pointer; color: #5e503b; font-size: 12px; user-select: none; }
+    .controls .mobile-settings > summary::-webkit-details-marker { display: none; }
+    .controls .mobile-settings > summary::after { content: "＋"; margin-left: auto; color: #8a775c; font-size: 14px; }
+    .controls .mobile-settings[open] > summary::after { content: "−"; }
+    .mobile-settings-note { color: #9a8b72; font-size: 10px; }
+    .controls .mobile-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px 11px; padding: 2px 13px 14px; }
+    .controls .control { min-width: 0; }
+    .controls .control-head { gap: 4px; margin-bottom: 7px; }
+    .controls .control label, .controls .value { font-size: 10px; }
+    .controls .control-foot { font-size: 9px; }
+    .controls .transport {
+      position: fixed; z-index: 998; left: 12px; right: 12px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      margin: 0; padding: 7px 12px; border: 1px solid rgba(112,91,61,.18);
+      border-radius: 17px; background: rgba(250,246,237,.96);
+      box-shadow: 0 6px 22px rgba(65,50,29,.12); backdrop-filter: blur(12px); grid-column: auto;
+    }
+    .mobile-settings-quick { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid rgba(105,83,55,.23); border-radius: 50%; background: #f9f4e8; color: #66543a; font-size: 13px; font-weight: 650; }
+    body.mobile-dictionary-open .controls .transport,
+    body.mobile-settings-open .controls .transport { display: none; }
+
+    .dictionary {
+      position: fixed; z-index: 1000; left: 8px; right: 8px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); width: auto;
+      height: min(66dvh, 590px); max-height: calc(100dvh - 70px); min-height: 0;
+      margin: 0; border-radius: 17px; box-shadow: 0 12px 38px rgba(55,43,26,.2);
+      transform: translateY(calc(100% - 60px)); transition: transform .24s ease; will-change: transform;
+    }
+    .dictionary.mobile-sheet-collapsed { transform: translateY(calc(100% - 60px)); }
+    .dictionary.mobile-sheet-open { transform: translateY(0); }
+    .dictionary .sidebar-heading { flex: 0 0 60px; min-height: 60px; padding: 10px 14px; align-items: center; gap: 9px; }
+    .sidebar-title { font-size: 19px; }
+    .dict-status-dot { margin-left: auto; }
+    .mobile-dict-toggle { display: grid; flex: 0 0 36px; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid rgba(112,91,61,.2); border-radius: 10px; background: rgba(255,252,245,.76); color: #796649; font-size: 21px; line-height: 1; }
+    .dictionary-search { padding: 10px 12px 11px; }
+    .search-label { font-size: 10px; margin-bottom: 5px; }
+    #dictSearch { min-height: 40px; padding: 9px 10px; font-size: 13px; }
+    .dict-load-row { flex-wrap: wrap; }
+    .dict-results-head { padding: 9px 13px 6px; }
+    .dict-search-results { padding: 0 7px 8px; }
+    .dict-result { padding: 10px 8px; }
+    .dict-detail { padding: 12px 14px 18px; }
+    .dict-detail-word { font-size: 27px; }
+    .dict-credit { padding: 8px 12px; }
+  }
+  @media (max-width: 390px) {
+    .mobile-settings-note { display: none; }
+    .shelf-title { font-size: 13px; }
+    .sidebar-title { font-size: 18px; }
+    .controls .mobile-settings-grid { gap: 14px 9px; padding-left: 11px; padding-right: 11px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .dictionary { transition: none; } }
+
 </style>
 </head>
 <body>
@@ -317,8 +424,8 @@
     <button class="button tiny" id="retryAnalyzer" hidden>Повторить подключение</button>
   </div>
 
-  <section class="book-shelf" aria-label="Книжная полка">
-    <div class="shelf-head"><span class="shelf-title">Моя книжная полка</span><span class="shelf-count" id="shelfCount">Загружаю библиотеку…</span></div>
+  <section class="book-shelf" id="bookShelf" aria-label="Книжная полка">
+    <div class="shelf-head"><span class="shelf-title">Моя книжная полка</span><span class="shelf-count" id="shelfCount">Загружаю библиотеку…</span><button class="button tiny mobile-shelf-toggle" id="mobileShelfToggle" type="button" aria-expanded="false">Показать</button></div>
     <div class="shelf-grid" id="shelfGrid"><div class="shelf-empty">Книги, которые ты откроешь, появятся здесь. Для каждой сохраняются позиция чтения и закладки.</div></div>
   </section>
 
@@ -351,6 +458,9 @@
     <div class="reader-help">Колесо мыши или ползунок — быстро перемещаться по тексту · клик по свободному месту — пауза / продолжить</div>
 
     <section class="controls" aria-label="Настройки чтения">
+      <details class="mobile-settings" id="mobileSettings" open>
+        <summary>Настройки чтения <span class="mobile-settings-note">Шрифт · интервалы · фуригана</span></summary>
+        <div class="mobile-settings-grid">
       <div class="control">
         <div class="control-head"><label for="speed">Скорость</label><span class="value" id="speedValue">28 px/с</span></div>
         <input id="speed" type="range" min="8" max="120" step="2" value="28">
@@ -380,9 +490,12 @@
         </select>
         <div class="control-foot"><span>Подсказки</span><span>Без подсказок</span></div>
       </div>
+        </div>
+      </details>
       <div class="transport">
         <button class="round-button" id="playPause" title="Запустить / пауза" aria-label="Запустить">▶</button>
         <button class="round-button secondary" id="restart" title="Начать сначала" aria-label="Начать сначала">↺</button>
+        <button class="mobile-settings-quick" id="mobileSettingsQuick" type="button" title="Настройки чтения" aria-label="Открыть настройки чтения">Aa</button>
       </div>
     </section>
 
@@ -391,6 +504,7 @@
       <div class="dictionary-head sidebar-heading">
         <div class="sidebar-title">Японский словарь</div>
         <span class="dict-status-dot" id="dictStateDot" title="Статус подключения словаря" aria-label="Статус подключения словаря"></span>
+        <button class="mobile-dict-toggle" id="mobileDictToggle" type="button" aria-label="Развернуть словарь" aria-expanded="false"><span aria-hidden="true">⌃</span></button>
       </div>
       <div class="dictionary-search">
         <label class="search-label" for="dictSearch">Искать слово или перевод</label>
@@ -427,7 +541,7 @@
           <div class="dict-detail-placeholder">
             <div class="placeholder-kanji">辞書</div>
             <div class="placeholder-title">Словарь под рукой</div>
-            <p>Нажми на слово в тексте или введи запрос выше. Перевод останется здесь, не перекрывая чтение.</p>
+            <p>Нажми на слово в тексте или введи запрос выше. Панель можно свернуть, чтобы вернуться к чтению.</p>
           </div>
         </section>
       </div>
@@ -458,6 +572,9 @@
   const statePill = $('statePill'), stateText = $('stateText'), filePicker = $('filePicker');
   const systemStatus = $('systemStatus'), systemIndicator = $('systemIndicator'), retryAnalyzer = $('retryAnalyzer');
   const dictPanel = $('dictionaryPanel');
+  const mobileDictToggle = $('mobileDictToggle'), mobileSettings = $('mobileSettings');
+  const mobileSettingsQuick = $('mobileSettingsQuick'), bookShelf = $('bookShelf'), mobileShelfToggle = $('mobileShelfToggle');
+  const mobileLayoutQuery = window.matchMedia('(max-width: 680px)');
   const dictSearch = $('dictSearch'), dictSearchResults = $('dictSearchResults'), dictDetail = $('dictDetail'), dictMainView = $('dictMainView');
   const dictLoadStatus = $('dictLoadStatus'), dictFallback = $('dictFallback'), dictStateDot = $('dictStateDot');
   const dictFilePicker = $('dictFilePicker');
@@ -1514,6 +1631,41 @@
     const tags=uniqueStrings((senses||[]).flatMap(s=>s.pos||[]));
     return tags.slice(0,5).map(tag=>POS_RU[tag] || tag).join(' · ');
   }
+  function setMobileDictionaryOpen(open) {
+    if (!mobileLayoutQuery.matches) return;
+    const isOpen = Boolean(open);
+    if (isOpen && mobileSettings.open) mobileSettings.open = false;
+    dictPanel.classList.toggle('mobile-sheet-open', isOpen);
+    dictPanel.classList.toggle('mobile-sheet-collapsed', !isOpen);
+    document.body.classList.toggle('mobile-dictionary-open', isOpen);
+    mobileDictToggle.setAttribute('aria-expanded', String(isOpen));
+    mobileDictToggle.setAttribute('aria-label', isOpen ? 'Свернуть словарь' : 'Развернуть словарь');
+    mobileDictToggle.innerHTML = '<span aria-hidden="true">' + (isOpen ? '⌄' : '⌃') + '</span>';
+  }
+  function setMobileShelfOpen(open) {
+    if (!mobileLayoutQuery.matches) return;
+    const isOpen = Boolean(open);
+    bookShelf.classList.toggle('mobile-collapsed', !isOpen);
+    mobileShelfToggle.textContent = isOpen ? 'Скрыть' : 'Показать';
+    mobileShelfToggle.setAttribute('aria-expanded', String(isOpen));
+  }
+  function syncResponsiveLayout() {
+    const isMobile = mobileLayoutQuery.matches;
+    document.body.classList.toggle('mobile-layout', isMobile);
+    mobileSettings.open = !isMobile;
+    document.body.classList.remove('mobile-settings-open');
+    if (isMobile) {
+      setMobileShelfOpen(false);
+      setMobileDictionaryOpen(false);
+    } else {
+      bookShelf.classList.remove('mobile-collapsed');
+      dictPanel.classList.remove('mobile-sheet-open', 'mobile-sheet-collapsed');
+      document.body.classList.remove('mobile-dictionary-open');
+      mobileDictToggle.setAttribute('aria-expanded', 'true');
+      mobileDictToggle.setAttribute('aria-label', 'Словарь открыт');
+      mobileDictToggle.innerHTML = '<span aria-hidden="true">⌃</span>';
+    }
+  }
   function setDictionaryView(view) {
     dictionaryView = view === 'detail' ? 'detail' : 'results';
     const detail = dictionaryView === 'detail';
@@ -1701,7 +1853,7 @@
       dictionaryLastQuery=normalizeSearch(dictSearch.value);
     }
     if(!dictionaryEntries.length) {
-      showWordFallback(target, 'Полный JMdict пока не загружен. Открой настройки словаря справа и нажми «Загрузить / повторить».');
+      showWordFallback(target, 'Полный JMdict пока не загружен. Открой «Настройки словаря и загрузка файлов» под полем поиска и нажми «Загрузить / повторить».');
       return;
     }
     const exact=findEntryForContext(target);
@@ -1729,6 +1881,7 @@
     if(immediate) run(); else dictionarySearchTimer=setTimeout(run,260);
   }
   async function showDictionary(tokenEl) {
+    if (mobileLayoutQuery.matches) setMobileDictionaryOpen(true);
     const surface=tokenEl.dataset.surface || tokenEl.textContent;
     const basic=tokenEl.dataset.basic || surface;
     const reading=tokenEl.dataset.reading || '';
@@ -1784,7 +1937,7 @@
   $('shelfGrid').addEventListener('click',event=>{
     const remove=event.target.closest('[data-remove-book]');
     if(remove){event.stopPropagation();removeBookFromShelf(remove.dataset.removeBook);return;}
-    const button=event.target.closest('[data-book-id]'); if(button) activateSavedBook(button.dataset.bookId);
+    const button=event.target.closest('[data-book-id]'); if(button) { activateSavedBook(button.dataset.bookId); setMobileShelfOpen(false); }
   });
   $('bookPosition').addEventListener('input',event=>{seekToRatio(Number(event.target.value)/1000,false);scheduleProgressSave();});
   $('bookPosition').addEventListener('change',()=>saveCurrentProgress());
@@ -1802,6 +1955,21 @@
     await importDictionaryFile(file); dictFilePicker.value='';
   });
   $('clearDictSearch').addEventListener('click', () => { dictSearch.value=''; currentWord=null; activeDictionaryEntryId=null; setDictionaryView('results'); queueDictionarySearch(true); dictSearch.focus(); });
+  mobileDictToggle.addEventListener('click', () => setMobileDictionaryOpen(!dictPanel.classList.contains('mobile-sheet-open')));
+  mobileShelfToggle.addEventListener('click', () => setMobileShelfOpen(bookShelf.classList.contains('mobile-collapsed')));
+  mobileSettingsQuick.addEventListener('click', () => {
+    if (!mobileLayoutQuery.matches) return;
+    mobileSettings.open = !mobileSettings.open;
+    if (mobileSettings.open) {
+      setMobileDictionaryOpen(false);
+      mobileSettings.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+  });
+  mobileSettings.addEventListener('toggle', () => {
+    if (!mobileLayoutQuery.matches) return;
+    document.body.classList.toggle('mobile-settings-open', mobileSettings.open);
+    if (mobileSettings.open) setMobileDictionaryOpen(false);
+  });
   dictSearch.addEventListener('input', () => { currentWord=null; activeDictionaryEntryId=null; setDictionaryView('results'); queueDictionarySearch(false); });
   dictSearch.addEventListener('keydown', event => { if(event.key==='Enter') { event.preventDefault(); queueDictionarySearch(true); const first=dictSearchResults.querySelector('.dict-result'); if(first) first.click(); } });
   dictSearchResults.addEventListener('click', event => {
@@ -1864,6 +2032,9 @@
   });
   document.addEventListener('visibilitychange', () => { if(document.hidden && isPlaying) pause(); });
   window.addEventListener('resize', () => { if(isPlaying){stopAnimation();rafId=requestAnimationFrame(tick);} updateTransform(); updateSeekUI(); });
+  if (mobileLayoutQuery.addEventListener) mobileLayoutQuery.addEventListener('change', syncResponsiveLayout);
+  else mobileLayoutQuery.addListener(syncResponsiveLayout);
+  syncResponsiveLayout();
   window.addEventListener('pagehide',()=>saveCurrentProgress());
   window.addEventListener('beforeunload',()=>saveCurrentProgress());
 
