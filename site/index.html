@@ -403,7 +403,7 @@
 <body>
 <div class="boot-splash" id="bootSplash" role="dialog" aria-modal="true" aria-labelledby="bootTitle" aria-describedby="bootDescription" hidden>
   <section class="boot-card">
-    <div class="boot-brand"><img class="boot-logo" src="./app-icon.svg" alt=""><div class="boot-brand-name">読みやすい <span class="boot-version" id="bootVersionBadge">v0.7</span></div></div>
+    <div class="boot-brand"><img class="boot-logo" src="./app-icon.svg" alt=""><div class="boot-brand-name">読みやすい <span class="boot-version" id="bootVersionBadge">v1.0</span></div></div>
     <div class="boot-eyebrow">Первый запуск</div>
     <h2 id="bootTitle">Готовим чтение</h2>
     <p class="boot-description" id="bootDescription">Подключаем японский анализатор и словари, чтобы дальше всё работало прямо в читалке.</p>
@@ -424,7 +424,7 @@
   <header class="topbar">
     <div class="brand">
       <img class="brand-logo" src="./app-icon.svg" alt="">
-      <div class="brand-title-row"><h1>読みやすい</h1><span class="brand-version" id="brandVersionBadge">v0.7</span><span class="brand-translation">/ лёгкое чтение</span></div>
+      <div class="brand-title-row"><h1>読みやすい</h1><span class="brand-version" id="brandVersionBadge">v1.0</span><span class="brand-translation">/ лёгкое чтение</span></div>
     </div>
     <div class="top-actions">
       <input class="file-input" id="filePicker" type="file" accept=".epub,.txt,.text,.md,.html,.htm,application/epub+zip,text/plain,text/html">
@@ -596,7 +596,7 @@
   const dictFilePicker = $('dictFilePicker');
   const bootSplash = $('bootSplash'), bootProgressTrack = $('bootProgressTrack'), bootProgressBar = $('bootProgressBar');
   const bootProgressLabel = $('bootProgressLabel'), bootProgressPct = $('bootProgressPct'), bootContinue = $('bootContinue');
-  const APP_VERSION = '0.7';
+  const APP_VERSION = '1.0';
   const JM_VERSION = '3.6.2+20261012204142';
   const BOOT_STORAGE_KEY = `yomiyasui-first-setup-${JM_VERSION}`;
   let firstSetupRequired = true, bootProgress = 0, bootAnalyzerReady = false, bootAnalyzerFailed = false, bootDictionaryReady = false, autoDictionaryStarted = false;
@@ -1899,6 +1899,7 @@
     if(immediate) run(); else dictionarySearchTimer=setTimeout(run,260);
   }
   async function showDictionary(tokenEl) {
+    pause(false);
     if (mobileLayoutQuery.matches) setMobileDictionaryOpen(true);
     const surface=tokenEl.dataset.surface || tokenEl.textContent;
     const basic=tokenEl.dataset.basic || surface;
@@ -1974,7 +1975,7 @@
   });
   $('clearDictSearch').addEventListener('click', () => { dictSearch.value=''; currentWord=null; activeDictionaryEntryId=null; setDictionaryView('results'); queueDictionarySearch(true); dictSearch.focus(); });
   mobileDictToggle.addEventListener('click', () => setMobileDictionaryOpen(false));
-  mobileDictionaryFab.addEventListener('click', () => setMobileDictionaryOpen(true));
+  mobileDictionaryFab.addEventListener('click', () => { pause(false); setMobileDictionaryOpen(true); });
   mobileShelfToggle.addEventListener('click', () => setMobileShelfOpen(bookShelf.classList.contains('mobile-collapsed')));
   mobileSettingsQuick.addEventListener('click', () => {
     if (!mobileLayoutQuery.matches) return;

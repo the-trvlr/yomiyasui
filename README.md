@@ -1,61 +1,87 @@
-# 読みやすい — Japanese reading practice
+# 読みやすい — лёгкая читалка японского
 
-A browser-based Japanese reading tool with bottom-to-top adjustable scrolling, EPUB/TXT/MD/HTML import, chapter navigation, bookmarks, saved per-book progress, furigana support, a JMdict-based dictionary panel, and a local book shelf.
+**読みやすい (Yomiyasui)** — браузерная читалка для спокойного чтения японских текстов. В ней можно импортировать собственные книги, читать с настраиваемой скоростью прокрутки, видеть фуригану и обращаться к локальному японскому словарю на русском и английском языках.
 
-## Live deployment
+**Версия:** 1.0  
+**Статус:** первый публичный релиз MVP  
+**Приложение:** https://the-trvlr.github.io/yomiyasui/  
+**Репозиторий:** https://github.com/the-trvlr/yomiyasui
 
-The GitHub Actions workflow in `.github/workflows/ci-cd.yml` validates the static app and deploys it to GitHub Pages when changes are pushed to `main` (or manually dispatched from `main`).
+## Возможности
 
-Expected URL: https://the-trvlr.github.io/yomiyasui/
+- **Импорт текстов:** EPUB, TXT, Markdown и HTML; также можно вставить текст вручную.
+- **Плавное автоматическое чтение:** регулируемая скорость вертикальной прокрутки, пауза, продолжение, перезапуск и переход по тексту.
+- **Японский текст и фуригана:** анализ текста в отдельном Web Worker, режимы отображения фуриганы и настройки размера шрифта, ширины строки и межстрочного интервала.
+- **Встроенный словарь:** поиск по японскому написанию, чтению, русскому и английскому переводу; словарные статьи на основе JMdict-Simplified.
+- **Два языка словаря:** русские и английские определения.
+- **Книжная полка:** импортированные книги, навигация по главам, закладки и сохранение позиции чтения для каждой книги.
+- **Известные слова:** возможность отмечать знакомые слова.
+- **Мобильный интерфейс:** увеличенная область чтения, компактная плавающая панель управления, словарь в раскрывающейся панели и поле поиска, настроенное для iOS Safari без автоматического увеличения масштаба.
+- **Первый запуск с индикацией подготовки:** загрузка анализатора и словарных данных с отображением этапов и прогресса.
+- **Установка как веб-приложения:** manifest и иконка приложения для поддерживаемых браузеров.
 
-## Project layout
+## Начало работы
 
-- `site/index.html` — the application, first-run progress screen, and reader UI.
-- `site/app-icon.svg` and `site/manifest.webmanifest` — app identity and install metadata.
-- `site/analyzer-worker.js` — Japanese analysis in a background worker.
-- `scripts/check-html.mjs` — CI checks for page structure and JavaScript syntax.
-- `.github/workflows/ci-cd.yml` — validation and Pages deployment pipeline.
+Откройте [читалку](https://the-trvlr.github.io/yomiyasui/) в современном браузере. На первом запуске приложению потребуется подготовить анализатор японского текста и словарный индекс. Дождитесь завершения начальной загрузки.
 
-## Local development
+Можно открыть собственный файл через кнопку импорта либо вставить текст. Книги и прогресс остаются в локальном хранилище текущего браузера.
 
-Runtime assets are generated, not committed to Git. To create a local copy of the same self-contained static assets used by the deployment, run this once from the repository root (Node.js/npm and curl are required):
+### Первый запуск и кэш
+
+Приложение загружает Kuromoji и словари JMdict-Simplified English/Russian из ресурсов, включённых в сборку сайта. Архивы словаря кэшируются в IndexedDB, если браузер поддерживает её. Это позволяет обычно не скачивать архивы повторно, однако на текущем этапе разбор архивов и построение поискового индекса выполняются при запуске страницы заново. Поэтому последующие запуски тоже могут занимать некоторое время.
+
+## Хранение данных и приватность
+
+Приложение статическое: у него нет аккаунтов, собственного сервера, аналитического backend или облачной синхронизации. Книги, позиции чтения, закладки и список известных слов сохраняются в хранилище браузера на устройстве пользователя. Эти данные не отправляются на сервер приложения и не попадают в Git-репозиторий.
+
+Локальные данные привязаны к конкретному браузеру и адресу сайта. Очистка данных сайта или переход на другой браузер/устройство может удалить или сделать недоступными сохранённые книги и прогресс. Если книга важна, храните исходный файл отдельно.
+
+## Технологии
+
+- HTML, CSS и JavaScript без обязательного серверного backend.
+- [Kuromoji](https://github.com/takuyaa/kuromoji) для токенизации японского текста.
+- [JSZip](https://stuk.github.io/jszip/) для чтения поддерживаемых архивов, включая EPUB.
+- [JMdict-Simplified](https://github.com/scriptin/jmdict-simplified) — японские словарные данные с английскими и русскими определениями.
+- IndexedDB и browser storage для локального кэша и пользовательских данных.
+- GitHub Actions и GitHub Pages для проверки и публикации.
+
+Лицензионные уведомления для словарных данных и библиотек включаются в сборку сайта. JMdict-derived data распространяются на условиях EDRDG; перед повторным использованием данных ознакомьтесь с соответствующими лицензиями и уведомлениями.
+
+## Разработка локально
+
+Нужны Node.js/npm и `curl`. Из корня репозитория выполните:
 
 ```sh
 bash scripts/prepare-site-assets.sh
-```
-
-This downloads the pinned Kuromoji and JSZip libraries, their required files, and the JMdict English/Russian archives into `site/vendor/` and `site/data/`. These generated files are ignored by Git.
-
-Then start a local static server:
-
-```sh
 python3 -m http.server 8000 --directory site
 ```
 
-Open http://localhost:8000. Do not open the HTML directly as a `file://` URL: the analyzer and dictionary load their bundled resources over HTTP.
+Откройте http://localhost:8000. Не открывайте `index.html` напрямую через `file://`: анализатор и словарь загружают ресурсы по HTTP.
 
-Run CI checks locally:
+Проверка HTML, встроенного JavaScript, анализатора и метаданных приложения:
 
 ```sh
 node scripts/check-html.mjs site/index.html
 ```
 
-## GitHub Pages
+Сгенерированные runtime-файлы в `site/vendor/` и `site/data/` намеренно не коммитятся. GitHub Actions собирает их перед публикацией.
 
-The workflow deploys the `site/` directory using GitHub Actions. In **Settings → Pages**, select **GitHub Actions** as the build and deployment source if it has not been selected automatically. Check the Actions tab for the deployment result.
+## Публикация
 
-## Privacy and storage
+Push в ветку `main` запускает проверку и публикацию каталога `site/` в GitHub Pages. Workflow также можно запустить вручную через GitHub Actions.
 
-The site is static and does not currently have accounts, a backend, or cloud synchronization. Books, progress, bookmarks, and known-word data are stored in the browser on the user's device. They are not committed to Git. Storage is specific to the browser profile and site origin.
+- [Последние сборки](https://github.com/the-trvlr/yomiyasui/actions)
+- [История изменений](https://github.com/the-trvlr/yomiyasui/commits/main)
 
-Do not add books, private reading logs, dictionary caches, credentials, or other personal data to this repository.
+## Текущий статус и известные ограничения
 
-## Dictionary data and bundled runtime assets
+Версия 1.0 — первый целостный релиз для личного чтения и проверки основного пользовательского сценария. Приложение работает как статический сайт и не требует установки сервера.
 
-The GitHub Pages build downloads pinned copies of Kuromoji, JSZip, and the JMdict-Simplified English/Russian archives, then includes them in the published `site/` artifact. The browser loads these assets from the same site origin rather than from third-party CDNs or release URLs. On first launch, the app shows progress while preparing the analyzer and dictionary index. Dictionary archives are cached in IndexedDB where supported, so they usually do not need to be downloaded again on later launches.
+- Словарный индекс пока строится заново при каждом открытии страницы, даже если архивы уже находятся в кэше.
+- Пользовательские данные не синхронизируются между устройствами и браузерами.
+- Это не замена специализированному редактору EPUB: сложная вёрстка и некоторые особенности форматирования книг могут отображаться упрощённо.
+- Проверки CI валидируют HTML/JavaScript и собирают сайт, но не заменяют полноценное автоматизированное тестирование во всех мобильных браузерах.
 
-JMdict-derived data is governed by the EDRDG license; the build includes a copy of the license alongside the dictionary archives. Kuromoji and JSZip license notices are included with their bundled files. Runtime assets are generated at deploy time and are not committed to the repository.
+## Благодарности
 
-## Current scope
-
-This is an early MVP. It is intentionally a static site; there is no backend, login system, or cloud sync yet. PWA support can be added in a later change.
+Спасибо авторам и сопровождающим Kuromoji, JSZip и JMdict-Simplified за инструменты и данные, на которых основаны функции анализа и словаря.

@@ -34,6 +34,7 @@ const siteDir = path.dirname(target);
 const iconPath = path.join(siteDir, 'app-icon.svg');
 const manifestPath = path.join(siteDir, 'manifest.webmanifest');
 if (!fs.existsSync(iconPath)) failures.push('Missing app-icon.svg.');
+else if (!fs.readFileSync(iconPath, 'utf8').includes('viewBox="0 0 512 512"')) failures.push('App icon SVG is missing the expected 512x512 viewBox.');
 if (!fs.existsSync(manifestPath)) failures.push('Missing manifest.webmanifest.');
 else {
   try {

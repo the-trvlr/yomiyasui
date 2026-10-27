@@ -1,17 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">読みやすい app icon</title><desc id="desc">An open book with a coral sun and Japanese reading marks.</desc>
+  <title id="title">読みやすい — иконка приложения</title>
+  <desc id="desc">Открытая книга, из-за которой поднимается красное японское солнце; под книгой слева веточка сакуры.</desc>
   <defs>
-    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#eadfc9"/></linearGradient>
-    <linearGradient id="cover" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#365a77"/><stop offset="1" stop-color="#213c55"/></linearGradient>
-    <linearGradient id="sun" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef9e92"/><stop offset="1" stop-color="#d66f68"/></linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0.9" y2="1"><stop stop-color="#fffaf0"/><stop offset="1" stop-color="#eee1ca"/></linearGradient>
+    <linearGradient id="cover" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#294966"/><stop offset="1" stop-color="#172f46"/></linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f45c48"/><stop offset="1" stop-color="#d9342d"/></linearGradient>
   </defs>
-  <rect width="512" height="512" rx="116" fill="#f4eedf"/><rect x="15" y="15" width="482" height="482" rx="104" fill="url(#paper)" stroke="#d8cbb5" stroke-width="3"/>
-  <circle cx="356" cy="151" r="66" fill="url(#sun)"/>
-  <path d="M90 246 C151 211 202 224 256 252 C310 224 361 211 422 246 L422 401 C359 370 308 377 256 409 C204 377 153 370 90 401 Z" fill="url(#cover)"/>
-  <path d="M99 237 C155 208 204 221 256 249 C308 221 357 208 413 237 L413 385 C355 360 304 367 256 395 C208 367 157 360 99 385 Z" fill="#fffaf1" stroke="#2b4a65" stroke-width="13" stroke-linejoin="round"/>
-  <path d="M256 250 V393" stroke="#b7a58a" stroke-width="5" stroke-linecap="round"/>
-  <path d="M132 270 C165 257 189 260 218 274 M132 298 C164 286 188 290 218 304 M132 326 C161 315 185 319 211 331" fill="none" stroke="#b9aa91" stroke-width="7" stroke-linecap="round"/>
-  <path d="M294 273 C325 260 348 261 379 273 M294 301 C325 289 348 290 379 302 M294 329 C322 317 346 319 371 331" fill="none" stroke="#b9aa91" stroke-width="7" stroke-linecap="round"/>
-  <g transform="translate(385 97)" fill="#d97573"><ellipse cx="0" cy="-15" rx="9" ry="14"/><ellipse cx="14" cy="-4" rx="9" ry="14" transform="rotate(55 14 -4)"/><ellipse cx="9" cy="12" rx="9" ry="14" transform="rotate(125 9 12)"/><ellipse cx="-9" cy="12" rx="9" ry="14" transform="rotate(235 -9 12)"/><ellipse cx="-14" cy="-4" rx="9" ry="14" transform="rotate(305 -14 -4)"/><circle r="6" fill="#f8d9a8"/></g>
-  <circle cx="116" cy="130" r="6" fill="#d97573" opacity=".7"/><circle cx="143" cy="154" r="4" fill="#d97573" opacity=".55"/>
+  <rect width="512" height="512" rx="112" fill="#f4eedf"/><rect x="13" y="13" width="486" height="486" rx="100" fill="url(#paper)" stroke="#d7c8ae" stroke-width="3"/>
+  <circle cx="256" cy="190" r="116" fill="url(#sun)"/>
+  <g fill="#f8c6a0" opacity=".8"><path d="M104 170h76q-12 10-26 10h-50q-14 0-20-5 7-5 20-5z"/><path d="M331 140h73q11 0 16 5-5 5-16 5h-73q-10 0-15-5 5-5 15-5z"/><path d="M347 205h61q10 0 15 5-5 5-15 5h-61q-10 0-15-5 5-5 15-5z"/></g>
+  <path d="M56 265Q154 216 256 270Q358 216 456 265L441 386Q344 354 256 408Q168 354 71 386Z" fill="url(#cover)" stroke="#18334a" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M73 257Q162 217 256 267Q350 217 439 257L426 361Q342 336 256 391Q170 336 86 361Z" fill="#fff9ed" stroke="#294966" stroke-width="8" stroke-linejoin="round"/><path d="M256 269V390" stroke="#bba98d" stroke-width="5" stroke-linecap="round"/>
+  <g fill="none" stroke="#c7b89e" stroke-width="5" stroke-linecap="round"><path d="M105 278q60-23 118 8M100 302q62-21 123 8M95 326q64-20 128 8"/><path d="M289 286q58-31 118-8M289 310q61-29 123-8M289 334q64-28 128-8"/></g>
+  <g fill="none" stroke="#253c51" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"><path d="M76 408q48-38 88-7t87 19"/><path d="M119 389q-7-26-28-41M143 403q20-25 45-26M173 418q-2 26 18 40M113 389q-21 4-36-9"/></g>
+  <g fill="#e99b9b" stroke="#d97579" stroke-width="1.5"><g transform="translate(91 347)"><ellipse cy="-12" rx="9" ry="13"/><ellipse cx="12" cy="-3" rx="9" ry="13" transform="rotate(60 12 -3)"/><ellipse cx="8" cy="11" rx="9" ry="13" transform="rotate(130 8 11)"/><ellipse cx="-8" cy="11" rx="9" ry="13" transform="rotate(230 -8 11)"/><ellipse cx="-12" cy="-3" rx="9" ry="13" transform="rotate(300 -12 -3)"/><circle r="5" fill="#c74b4b" stroke="none"/></g><g transform="translate(176 421) scale(.75)"><ellipse cy="-12" rx="9" ry="13"/><ellipse cx="12" cy="-3" rx="9" ry="13" transform="rotate(60 12 -3)"/><ellipse cx="8" cy="11" rx="9" ry="13" transform="rotate(130 8 11)"/><ellipse cx="-8" cy="11" rx="9" ry="13" transform="rotate(230 -8 11)"/><ellipse cx="-12" cy="-3" rx="9" ry="13" transform="rotate(300 -12 -3)"/><circle r="5" fill="#c74b4b" stroke="none"/></g></g>
+  <g fill="#d97579"><ellipse cx="67" cy="382" rx="6" ry="12" transform="rotate(-35 67 382)"/><ellipse cx="151" cy="388" rx="6" ry="12" transform="rotate(40 151 388)"/><ellipse cx="202" cy="444" rx="5" ry="10" transform="rotate(25 202 444)"/></g>
 </svg>
