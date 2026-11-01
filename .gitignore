@@ -18,3 +18,4 @@ site/data/EDRDG-LICENSE.html
 baseline/
 .npm-cache/
 .cache/
+site/data/dict-*.json

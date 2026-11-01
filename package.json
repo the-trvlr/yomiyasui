@@ -1,6 +1,6 @@
 {
   "name": "yomiyasui",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "読みやすい — браузерная читалка японского с фуриганой и словарём",
@@ -23,6 +23,8 @@
     "test": "node --test \"tests/**/*.test.mjs\"",
     "smoke": "node scripts/smoke.mjs",
     "smoke:full": "node scripts/smoke.mjs --full",
+    "dictionary": "node --max-old-space-size=4096 scripts/build-dictionary.mjs",
+    "measure": "node scripts/measure.mjs",
     "verify": "npm run check && npm run lint && npm run format:check && npm test"
   },
   "devDependencies": {
