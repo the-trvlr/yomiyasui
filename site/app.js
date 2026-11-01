@@ -76,6 +76,9 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   // Зеркально горизонтальному режиму, где над текстом остаётся 70% высоты.
   const VERTICAL_START_COLUMNS = 2.4;
   let textOrientation = 'horizontal';
+  // Пока анализатор готовится (или разбирает книгу), его прогресс важнее:
+  // сообщения словаря в этот момент не должны перебивать статус в шапке.
+  let analyzerBusy = true;
   try {
     if (localStorage.getItem(ORIENTATION_KEY) === 'vertical') textOrientation = 'vertical';
   } catch (_) { /* приватный режим — остаёмся на горизонтальном */ }
@@ -774,6 +777,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   }
   async function applyText(text, opts={}) {
     const version = ++renderVersion;
+    analyzerBusy = true;
     const clean = String(text || '').replace(/\r\n?/g, '\n').trim();
     textInput.value = clean;
     if (opts.paragraphs) analyzedParagraphs=opts.paragraphs.map(p=>({text:String(p.text||''),heading:!!p.heading,tokens:null}));
@@ -814,6 +818,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       }
       if (version !== renderVersion) return;
       renderAnalyzedText(); await restore();
+      analyzerBusy = false;
       setSystemStatus(`Анализ готов · ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз. · нажимай на слово для поиска в словаре`, 'ready');
       bootAnalyzerReady=true; setBootStep('analyzer','done','Анализатор подключён и готов к работе');
       setBootProgress(Math.max(50,bootProgress),'Анализатор готов','Теперь загружаются словари, чтобы поиск и переводы работали без ручной настройки.');
@@ -821,7 +826,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       else startAutomaticDictionaryLoad();
     } catch (err) {
       if (version !== renderVersion) return;
-      renderAnalyzedText(); await restore(); bootAnalyzerFailed=true;
+      renderAnalyzedText(); await restore(); analyzerBusy = false; bootAnalyzerFailed=true;
       setSystemStatus('Не удалось загрузить анализатор из локальных файлов приложения. Текст доступен, но фуригана и выбор слов пока недоступны. Попробуй повторить подключение.', 'error', true);
       setBootStep('analyzer','error',err?.message || 'Анализатор не запустился');
       setBootProgress(Math.max(48,bootProgress),'Анализатор не подключился','Продолжаю подготовку словаря. Можно будет продолжить чтение и повторить подключение анализатора позже.');
@@ -1157,7 +1162,11 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     dictStateDot.title=message; dictStateDot.setAttribute('aria-label',message);
     if(state==='ready') dictFallback.hidden=true;
     // Preserve the analyzer retry control while dictionary progress updates the same status bar.
-    setSystemStatus(message,bootAnalyzerFailed?'error':state==='error'?'error':state==='ready'?'ready':'loading',bootAnalyzerFailed);
+    // Пока идёт анализ текста, прогресс словаря остаётся в панели словаря и в
+    // экране первого запуска, чтобы не перебивать статус анализатора.
+    if (!analyzerBusy || state === 'error') {
+      setSystemStatus(message,bootAnalyzerFailed?'error':state==='error'?'error':state==='ready'?'ready':'loading',bootAnalyzerFailed);
+    }
     updateBootDictionaryProgress(message,state);
   }
   /** Загружает собранный на CI словарь: сначала частые слова, потом полный набор. */
@@ -1664,9 +1673,12 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   applyOrientationStyles();
   updateSettings();
   applyText(sample,{title:'Демонстрационный текст'});
+  // Словарь не зависит от анализатора: грузим оба параллельно, чтобы первый
+  // запуск упирался в самый медленный ресурс, а не в их сумму.
+  startAutomaticDictionaryLoad();
   refreshBookShelf().then(async()=>{
     let lastId=null; try{lastId=localStorage.getItem('kotoba-last-book-id')}catch(_){}
     if(lastId&&bookLibrary.some(b=>b.id===lastId)) await activateSavedBook(lastId);
   });
-  // The full dictionary starts after tokenizer initialization; resources are served locally and cached in IndexedDB.
+  // Словарь и анализатор грузятся параллельно; ресурсы отдаются локально и кэшируются в IndexedDB.
 })();
