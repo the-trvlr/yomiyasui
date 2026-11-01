@@ -134,6 +134,24 @@ const CHAPTER_PROBE = `(() => {
   return out;
 })()`;
 
+/** Вводит запрос в словарь; результаты появятся после загрузки словаря. */
+const DICTIONARY_SETUP = `(() => {
+  const input = document.getElementById('dictSearch');
+  input.value = '静か';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  return 'ok';
+})()`;
+
+/** Что показал словарь: число результатов и первое слово. */
+const DICTIONARY_PROBE = `(() => {
+  const results = [...document.querySelectorAll('.dict-result')];
+  return {
+    count: results.length,
+    first: results[0] ? results[0].querySelector('.dict-result-word').textContent : null,
+    status: document.getElementById('dictLoadStatus').textContent
+  };
+})()`;
+
 const FINGERPRINT = `(() => {
   const copy = document.querySelector('#readingCopy');
   const clone = copy ? copy.cloneNode(true) : null;
@@ -375,6 +393,12 @@ async function main() {
       afterLoad: VERTICAL_SETUP,
       extra: VERTICAL_PROBE,
     });
+    const dictionary = await capture(devtoolsPort, `${base}/site/`, {
+      afterLoad: DICTIONARY_SETUP,
+      readyExpression: "document.querySelectorAll('.dict-result').length > 0",
+      readyTimeout: 240000,
+      extra: DICTIONARY_PROBE,
+    });
     const chapters = await capture(devtoolsPort, `${base}/site/`, {
       afterLoad: CHAPTER_SETUP,
       readyExpression:
@@ -428,6 +452,9 @@ async function main() {
         `прокрутка ${v.trackTransform}, жест тачпада: ${v.wheelMoved ? 'да' : 'нет'}`,
     );
 
+    const d = dictionary.extra || {};
+    console.log(`\nСловарь: ${d.count} результат(ов), первое слово «${d.first}» · ${d.status}`);
+
     const c = chapters.extra || {};
     console.log(
       `\nГлавы: старт ${c.start?.select}/${c.start?.offset}px, вперёд ${c.next1?.select}, ` +
@@ -457,6 +484,10 @@ async function main() {
       problems.push(`перед текстом должно оставаться 0.5-0.9 ширины, получено ${v.startInset}`);
     }
     if (v.wheelMoved !== true) problems.push('горизонтальный жест тачпада не прокручивает текст');
+    if (dictionary.errors.length) problems.push(`ошибки словаря: ${dictionary.errors.join(' | ')}`);
+    if (!(d.count > 0)) problems.push('поиск по「静か」ничего не вернул');
+    if (d.first !== '静か')
+      problems.push(`первым результатом ожидалось «静か», получено «${d.first}»`);
     if (chapters.errors.length)
       problems.push(`ошибки в навигации по главам: ${chapters.errors.join(' | ')}`);
     if (c.start?.select !== '0' || c.start?.offset !== 0)

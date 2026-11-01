@@ -45,6 +45,12 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     eng: appAssetUrl(`data/jmdict-eng-${JM_VERSION}.json.zip`),
     rus: appAssetUrl(`data/jmdict-rus-${JM_VERSION}.json.zip`)
   };
+  // Словарь, собранный scripts/build-dictionary.mjs: без JSZip и без слияния
+  // двух архивов в браузере. core — частые слова, чтобы поиск заработал сразу.
+  const COMPILED_DICT = {
+    core: appAssetUrl(`data/dict-core-${JM_VERSION}.json`),
+    full: appAssetUrl(`data/dict-${JM_VERSION}.json`)
+  };
   // The manual-download links live in the HTML; derive them from the single version source
   // so the archive name can never drift from config.js.
   for (const [language, url] of Object.entries(JM_ASSETS)) {
@@ -1005,6 +1011,64 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     await cacheArchive(language, buffer.slice(0));
     return buffer;
   }
+  /**
+   * Загружает собранный на CI словарь и раскладывает кортежи в обычные записи.
+   * Формат: [id, kanji, kana, senses, rusSenses, common], части речи — индексы.
+   */
+  async function ingestCompiledDictionary(data, label='') {
+    const posTable = data.pos || [];
+    const rows = data.entries || [];
+    const posOf = (indices) => (indices || []).map((index) => posTable[index]).filter(Boolean);
+    const next = new Map();
+    for (let i = 0; i < rows.length; i++) {
+      const [id, kanji, kana, senses, rusSenses, common] = rows[i];
+      next.set(id, {
+        id,
+        kanji: (kanji || []).map(([text, isCommon]) => ({ text, common: !!isCommon })),
+        kana: (kana || []).map(([text, isCommon, appliesToKanji]) => ({
+          text,
+          common: !!isCommon,
+          appliesToKanji: appliesToKanji || [],
+        })),
+        senses: (senses || []).map(([pos, defs]) => ({ pos: posOf(pos), defs: defs || [] })),
+        rusSenses: (rusSenses || []).map(([pos, defs]) => ({ pos: posOf(pos), defs: defs || [] })),
+        common: !!common,
+      });
+      if (i && i % 20000 === 0) {
+        updateDictStatus(`${label}: ${i.toLocaleString('ru-RU')} / ${rows.length.toLocaleString('ru-RU')} записей…`);
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      }
+    }
+    dictionaryById = next;
+    try { data.entries.length = 0; } catch (_) {}
+  }
+  async function fetchCompiledDictionary(key, label) {
+    const response = await fetchWithTimeout(COMPILED_DICT[key], { credentials: 'omit', cache: 'force-cache' }, 180000);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    let buffer;
+    if (response.body && response.body.getReader) {
+      const reader = response.body.getReader(), chunks = [];
+      let received = 0;
+      const total = Number(response.headers.get('content-length')) || 0;
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        chunks.push(part.value);
+        received += part.value.byteLength;
+        const mb = (received / 1048576).toFixed(1).replace('.', ',');
+        const totalText = total ? ` / ${(total / 1048576).toFixed(1).replace('.', ',')} МБ` : '';
+        updateDictStatus(`Скачиваю ${label}: ${mb}${totalText}`);
+      }
+      buffer = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
+      buffer = buffer.buffer;
+    } else {
+      buffer = await response.arrayBuffer();
+    }
+    updateDictStatus(`Разбираю ${label}…`);
+    return JSON.parse(new TextDecoder().decode(buffer));
+  }
   async function parseDictionaryArchive(input, forcedLanguage=null, fileName='') {
     const JSZip = await ensureJSZip();
     let data;
@@ -1096,23 +1160,47 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     setSystemStatus(message,bootAnalyzerFailed?'error':state==='error'?'error':state==='ready'?'ready':'loading',bootAnalyzerFailed);
     updateBootDictionaryProgress(message,state);
   }
+  /** Загружает собранный на CI словарь: сначала частые слова, потом полный набор. */
+  async function loadCompiledDictionary() {
+    try {
+      const core = await fetchCompiledDictionary('core', 'частый словарь');
+      await ingestCompiledDictionary(core, 'Индексирую частый словарь');
+      updateDictStatus('Индексирую частый словарь…');
+      await updateDictionaryIndex();
+      updateDictStatus(`Базовый словарь · ${dictionaryEntries.length.toLocaleString('ru-RU')} частых слов · догружаю полный…`);
+    } catch (err) {
+      // Ядро — оптимизация: без него грузим сразу полный словарь.
+      console.warn('Compiled core dictionary unavailable:', err);
+    }
+    const full = await fetchCompiledDictionary('full', 'полный словарь');
+    await ingestCompiledDictionary(full, 'Индексирую полный словарь');
+    updateDictStatus('Индексирую полный словарь…');
+    await updateDictionaryIndex();
+  }
+
   async function loadFullDictionary(force=false) {
     if(dictionaryLoadingPromise) return dictionaryLoadingPromise;
     if(dictionaryLoaded && !force) { updateDictStatus(`JMdict подключён · ${dictionaryEntries.length.toLocaleString('ru-RU')} записей`,'ready'); return; }
     dictionaryLoadFailed=false;
     dictionaryLoadingPromise=(async()=>{
       try {
-        await ensureJSZip();
-        // Full English JMdict covers the complete dictionary; the Russian archive adds available Russian glosses.
-        for(const language of ['eng','rus']) {
-          updateDictStatus(language==='eng' ? 'Готовлю полный английский JMdict…' : 'Добавляю русские переводы…');
-          const buffer=await fetchArchive(language);
-          updateDictStatus(`Распаковываю словарь ${language.toUpperCase()}…`);
-          const parsed=await parseDictionaryArchive(buffer,language,`jmdict-${language}-${JM_VERSION}.json`);
-          await ingestDictionary(parsed.data, language, '', false);
+        try {
+          await loadCompiledDictionary();
+        } catch (compiledError) {
+          // Совместимость: если собранного словаря нет (старый деплой или ручная
+          // сборка только с архивами), грузим два zip-архива как раньше.
+          console.warn('Compiled dictionary unavailable, using archives:', compiledError);
+          await ensureJSZip();
+          for(const language of ['eng','rus']) {
+            updateDictStatus(language==='eng' ? 'Готовлю полный английский JMdict…' : 'Добавляю русские переводы…');
+            const buffer=await fetchArchive(language);
+            updateDictStatus(`Распаковываю словарь ${language.toUpperCase()}…`);
+            const parsed=await parseDictionaryArchive(buffer,language,`jmdict-${language}-${JM_VERSION}.json`);
+            await ingestDictionary(parsed.data, language, '', false);
+          }
+          updateDictStatus('Индексирую объединённый словарь…');
+          await updateDictionaryIndex();
         }
-        updateDictStatus('Индексирую объединённый словарь…');
-        await updateDictionaryIndex();
         dictionaryLoaded=true; dictionaryLoadFailed=false;
         updateDictStatus(`Полный JMdict · ${dictionaryEntries.length.toLocaleString('ru-RU')} записей · русский + английский`,'ready');
         dictFallback.hidden=true;

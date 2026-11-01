@@ -51,5 +51,10 @@ test -s "$SITE/data/jmdict-rus-$JM_VERSION.json.zip"
 test -s "$SITE/data/EDRDG-LICENSE.html"
 test "$(find "$SITE/vendor/kuromoji/dict" -type f | wc -l)" -gt 10
 
+# Собранный словарь: браузер больше не распаковывает архивы и не сливает их сам.
+node "$ROOT/scripts/build-dictionary.mjs" --out "$SITE/data"
+test -s "$SITE/data/dict-$JM_VERSION.json"
+test -s "$SITE/data/dict-core-$JM_VERSION.json"
+
 echo "Prepared local app assets:"
 du -sh "$SITE/vendor" "$SITE/data"
