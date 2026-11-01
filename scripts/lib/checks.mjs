@@ -19,6 +19,7 @@ const REQUIRED_IDS = [
   'leading',
   'fontSize',
   'furiganaMode',
+  'textOrientation',
   'dictSearch',
   'dictSearchResults',
   'dictDetail',
@@ -147,6 +148,21 @@ export function checkSite(htmlPath) {
     }
     const error = syntaxErrors(configPath);
     if (error) failures.push(`site/config.js failed syntax check:\n${error}`);
+  }
+
+  // Версия в статичной разметке должна совпадать с site/config.js.
+  if (fs.existsSync(configPath)) {
+    const config = fs.readFileSync(configPath, 'utf8');
+    const appVersion = /export const APP_VERSION\s*=\s*['"]([^'"]+)['"]/.exec(config)?.[1];
+    if (appVersion) {
+      for (const id of ['brandVersionBadge', 'bootVersionBadge']) {
+        const match = new RegExp(`id=["']${id}["'][^>]*>v([^<]+)<`).exec(html);
+        if (!match) failures.push(`Missing #${id}.`);
+        else if (match[1] !== appVersion) {
+          failures.push(`#${id} shows v${match[1]} but site/config.js says v${appVersion}.`);
+        }
+      }
+    }
   }
 
   const workerPath = path.join(siteDir, 'analyzer-worker.js');

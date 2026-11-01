@@ -35,6 +35,45 @@ const INTENDED_DIFFS = new Map([['readerLang', 'добавлен lang="ja" дл�
 /** Поля, зависящие от скорости сети: печатаются, но не сравниваются. */
 const VOLATILE = new Set(['words', 'ruby']);
 
+/** Включает 縦書き в текущей версии (в main такого элемента управления нет). */
+const VERTICAL_SETUP = `(() => {
+  const select = document.getElementById('textOrientation');
+  if (!select) return 'missing';
+  select.value = 'vertical';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  return 'ok';
+})()`;
+
+/** Измерения вертикального режима: ось прокрутки, сторона фуриганы, число столбцов. */
+const VERTICAL_PROBE = `(() => {
+  const copy = document.querySelector('#readingCopy');
+  const reader = document.querySelector('#reader');
+  const track = document.querySelector('#track');
+  const style = getComputedStyle(copy);
+  const slider = document.getElementById('bookPosition');
+  if (slider) { slider.value = '400'; slider.dispatchEvent(new Event('input', { bubbles: true })); }
+  let rubyOnRight = null;
+  const ruby = copy.querySelector('ruby');
+  if (ruby && ruby.firstChild) {
+    const range = document.createRange();
+    range.selectNodeContents(ruby.firstChild);
+    const base = range.getBoundingClientRect();
+    const rt = ruby.querySelector('rt');
+    rubyOnRight = rt ? rt.getBoundingClientRect().left >= base.right - 1 : null;
+  }
+  const copyRect = copy.getBoundingClientRect();
+  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize);
+  return {
+    writingMode: style.writingMode,
+    rubyOnRight,
+    trackTransform: track.style.transform,
+    columns: Math.round(copyRect.width / lineHeight),
+    copyHeight: Math.round(copyRect.height),
+    readerWidth: reader.clientWidth,
+    progress: document.getElementById('positionLabel').textContent
+  };
+})()`;
+
 const FINGERPRINT = `(() => {
   const copy = document.querySelector('#readingCopy');
   const clone = copy ? copy.cloneNode(true) : null;
@@ -148,7 +187,7 @@ async function waitFor(cdp, expression, timeoutMs = 20000) {
   return false;
 }
 
-async function capture(port, url, { deep = false } = {}) {
+async function capture(port, url, { deep = false, afterLoad = null, extra = null } = {}) {
   const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, {
     method: 'PUT',
   });
@@ -190,10 +229,16 @@ async function capture(port, url, { deep = false } = {}) {
     await delay(1500);
   }
 
+  if (afterLoad) {
+    await evaluate(cdp, afterLoad);
+    await delay(900);
+  }
+
   const fingerprint = await evaluate(cdp, FINGERPRINT);
+  const extraData = extra ? await evaluate(cdp, extra) : null;
   cdp.close();
   await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`).catch(() => {});
-  return { fingerprint, errors };
+  return { fingerprint, errors, extra: extraData };
 }
 
 async function main() {
@@ -251,6 +296,11 @@ async function main() {
     const deep = process.argv.includes('--full');
     const baseline = await capture(devtoolsPort, `${base}/baseline/`, { deep });
     const current = await capture(devtoolsPort, `${base}/site/`, { deep });
+    const vertical = await capture(devtoolsPort, `${base}/site/`, {
+      deep: true,
+      afterLoad: VERTICAL_SETUP,
+      extra: VERTICAL_PROBE,
+    });
 
     const keys = [
       ...new Set([...Object.keys(baseline.fingerprint), ...Object.keys(current.fingerprint)]),
@@ -290,6 +340,12 @@ async function main() {
       }
     }
 
+    const v = vertical.extra || {};
+    console.log(
+      `\n縦書き: writing-mode=${v.writingMode}, столбцов ${v.columns}, фуригана справа: ${v.rubyOnRight}, ` +
+        `прокрутка ${v.trackTransform}, прогресс ${v.progress}`,
+    );
+
     const problems = [];
     if (mismatches.length) problems.push(`расхождения: ${mismatches.join(', ')}`);
     if (current.fingerprint.readerLang !== 'ja')
@@ -298,6 +354,14 @@ async function main() {
       problems.push('анализатор не разметил ни одного слова');
     if (deep && current.fingerprint.ruby === 0) problems.push('фуригана не отрисована');
     if (current.errors.length) problems.push(`ошибки в консоли: ${current.errors.join(' | ')}`);
+    if (vertical.errors.length)
+      problems.push(`ошибки в вертикальном режиме: ${vertical.errors.join(' | ')}`);
+    if (v.writingMode !== 'vertical-rl')
+      problems.push(`вертикальный режим не включился (writing-mode=${v.writingMode})`);
+    if (!String(v.trackTransform || '').startsWith('translateX'))
+      problems.push(`прокрутка не по горизонтали: ${v.trackTransform}`);
+    if (v.rubyOnRight !== true) problems.push('фуригана не справа от текста');
+    if (!(v.columns > 1)) problems.push(`ожидалось несколько столбцов, получено ${v.columns}`);
     if (baseline.errors.length) problems.push(`ошибки в main: ${baseline.errors.join(' | ')}`);
 
     console.log();

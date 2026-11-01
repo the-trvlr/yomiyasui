@@ -64,6 +64,11 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
 彼はもう一度、本を開いた。今度は、さっきよりも少しだけ落ち着いて読める気がした。`;
 
   let offset = 0, lastTime = 0, rafId = 0, isPlaying = false, isFinished = false;
+  const ORIENTATION_KEY = 'kotoba-orientation';
+  let textOrientation = 'horizontal';
+  try {
+    if (localStorage.getItem(ORIENTATION_KEY) === 'vertical') textOrientation = 'vertical';
+  } catch (_) { /* приватный режим — остаёмся на горизонтальном */ }
   let tokenizer = null, tokenizerPromise = null, jsZipPromise = null, renderVersion = 0;
   let tokenizerWorker = null, analyzerRequestId = 0;
   const analyzerPendingRequests = new Map();
@@ -174,18 +179,48 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     playPause.title = playing ? 'Пауза' : (isFinished ? 'Начать сначала' : 'Запустить');
   }
   function stopAnimation() { if (rafId) cancelAnimationFrame(rafId); rafId = 0; lastTime = 0; }
-  function updateTransform() { track.style.transform = `translateY(${-offset}px)`; }
-  function getMaxOffset() { return Math.max(1, reader.clientHeight * 0.7 + track.scrollHeight + 12); }
+  // 縦書き: текст идёт сверху вниз, столбцы — справа налево, поэтому прокрутка
+  // работает по горизонтали и тянет содержимое вправо.
+  function isVertical() { return textOrientation === 'vertical'; }
+  function readingAxisSize() { return isVertical() ? reader.clientWidth : reader.clientHeight; }
+  function contentAxisSize() {
+    // В вертикальном режиме длина текста — это ширина набора столбцов.
+    if (isVertical()) return Math.max(copy.scrollWidth, copy.getBoundingClientRect().width);
+    return track.scrollHeight;
+  }
+  function updateTransform() {
+    track.style.transform = isVertical() ? `translateX(${offset}px)` : `translateY(${-offset}px)`;
+  }
+  function getMaxOffset() {
+    // Горизонтально текст входит снизу и уходит вверх; вертикально — входит
+    // справа и уходит вправо, освобождая место следующим столбцам.
+    if (isVertical()) return Math.max(1, contentAxisSize() + 12);
+    return Math.max(1, reader.clientHeight * 0.7 + contentAxisSize() + 12);
+  }
   function getProgressRatio() { return Math.max(0, Math.min(1, offset / getMaxOffset())); }
+  // Позиция абзаца вдоль оси чтения, в координатах дорожки. Разница между
+  // прямоугольниками не зависит от translate-трансформации самой дорожки.
+  function axisOffsetOf(node) {
+    const trackRect = track.getBoundingClientRect();
+    const rect = node.getBoundingClientRect();
+    return isVertical() ? trackRect.right - rect.right : rect.top - trackRect.top;
+  }
   function updateChapterPosition() {
     if (!currentChapters.length) return;
-    const targetY = Math.max(0, offset - reader.clientHeight * 0.28);
+    // Порог «глава уже началась» зависит от направления движения текста.
+    // Горизонтально текст уходит вверх: глава считается текущей, когда её начало
+    // поднялось на 0.28 экрана выше линии чтения. Вертикально текст уходит вправо,
+    // и запасной области «уже прочитанного» на экране нет, поэтому глава
+    // становится текущей, когда её начало вошло в область чтения примерно
+    // на столбец — иначе сразу после перехода селектор показывал бы прошлую.
+    const axis = readingAxisSize();
+    const target = isVertical() ? offset + axis * 0.12 : Math.max(0, offset - axis * 0.28);
     let index = 0;
     const nodes = copy.children;
     for (let i = 0; i < currentChapters.length; i++) {
       const start = currentChapters[i].startParagraph || 0;
       const node = nodes[start];
-      if (!node || node.offsetTop <= targetY) index = i;
+      if (!node || axisOffsetOf(node) <= target) index = i;
       else break;
     }
     const select = $('chapterSelect');
@@ -243,12 +278,42 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     if (!node) return;
     pause(false);
     if (i === 0) offset = 0;
-    else {
+    else if (isVertical()) {
+      // Столбцы идут справа налево: ставим начало главы к правому краю,
+      // чтобы чтение начиналось с заголовка.
+      const rect = node.getBoundingClientRect();
+      const desiredRight = reader.getBoundingClientRect().right - 8;
+      offset = Math.max(0, Math.min(getMaxOffset(), offset + desiredRight - rect.right));
+    } else {
       const rect = node.getBoundingClientRect();
       const desiredY = reader.getBoundingClientRect().top + reader.clientHeight * 0.37;
       offset = Math.max(0, Math.min(getMaxOffset(), offset + rect.top - desiredY));
     }
     isFinished = false; updateTransform(); updateSeekUI(); $('chapterSelect').value = String(i); saveCurrentProgress();
+  }
+  function applyOrientationStyles() {
+    reader.classList.toggle('vertical', isVertical());
+    const select = $('textOrientation');
+    if (select && select.value !== textOrientation) select.value = textOrientation;
+  }
+  function setTextOrientation(mode, { persist = true } = {}) {
+    const next = mode === 'vertical' ? 'vertical' : 'horizontal';
+    if (next === textOrientation) return;
+    // Доля прочитанного переносится на новую раскладку: пиксельная позиция
+    // между режимами несопоставима, а прогресс по книге — да.
+    const ratio = getProgressRatio();
+    textOrientation = next;
+    applyOrientationStyles();
+    if (persist) {
+      try { localStorage.setItem(ORIENTATION_KEY, next); } catch (_) {}
+    }
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const maxOffset = getMaxOffset();
+      offset = Math.max(0, Math.min(maxOffset, ratio * maxOffset));
+      isFinished = ratio >= 0.9995;
+      updateTransform(); updateSeekUI(); setState(isPlaying);
+      saveCurrentProgress();
+    }));
   }
   function updateSettings() {
     const speed = getSpeed(), width = Number($('lineWidth').value), leading = Number($('leading').value), fontSize = Number($('fontSize').value);
@@ -1314,6 +1379,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   $('leading').addEventListener('input', updateSettings);
   $('fontSize').addEventListener('input', updateSettings);
   $('furiganaMode').addEventListener('change', () => { renderAnalyzedText(); updateTransform(); });
+  $('textOrientation').addEventListener('change', (event) => setTextOrientation(event.target.value));
   $('applyText').addEventListener('click', async () => {
     const data=plainDocument(textInput.value,'Вставленный текст');
     if(!data.paragraphs.length) { setSystemStatus('Вставь текст перед добавлением на книжную полку.', 'error', true); return; }
@@ -1457,6 +1523,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   textInput.value = sample;
   currentBookName='Демонстрационный текст';
   currentChapters=[{title:'Демонстрационный текст',startParagraph:0,endParagraph:sample.split(/\n\s*\n/).length-1}];
+  applyOrientationStyles();
   updateSettings();
   applyText(sample,{title:'Демонстрационный текст'});
   refreshBookShelf().then(async()=>{

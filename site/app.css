@@ -388,3 +388,55 @@
   /* The editor is already accessible from the two primary actions in the header. */
   details.editor { display: none; }
 
+  /* 縦書き: традиционная вертикальная запись — столбцы сверху вниз, справа налево.
+     Фуригана при writing-mode: vertical-rl автоматически уходит вправо (ruby-position: over). */
+  .reader-shell.vertical .reader-track {
+    top: 0;
+    bottom: 0;
+    left: auto;
+    right: 0;
+    height: auto;
+    display: flex;
+    align-items: center;
+    padding: 34px 22px 34px 34px;
+  }
+  .reader-shell.vertical .reader-copy {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    width: auto;
+    max-width: none;
+    /* В вертикальном наборе «длина строки» — это высота столбца. */
+    height: min(calc(var(--line-chars) * 1em), 100%);
+    margin: 0;
+  }
+  .reader-shell.vertical .reader-copy p {
+    margin: 0;
+    padding: 0;
+    /* Логические отступы: в vertical-rl block-start — это правая сторона. */
+    margin-block-start: .9em;
+    padding-block-start: .35em;
+  }
+  .reader-shell.vertical .reader-copy p:last-child { padding-block-end: 2em; }
+  .reader-shell.vertical .reader-copy p.chapter-heading {
+    margin-block: .9em 1.2em;
+    text-align: center;
+  }
+  .reader-shell.vertical::before,
+  .reader-shell.vertical::after {
+    left: auto;
+    right: auto;
+    top: 0;
+    bottom: 0;
+    height: auto;
+    width: 46px;
+  }
+  /* Справа находится строка, которую читают сейчас, вместе с фуриганой:
+     затемнение там только мешает, поэтому остаётся мягкий край слева. */
+  .reader-shell.vertical::before { display: none; }
+  .reader-shell.vertical::after {
+    left: 0;
+    background: linear-gradient(to right, rgba(244, 238, 223, .95), rgba(244, 238, 223, 0));
+  }
+  @media (max-width: 680px) {
+    .reader-shell.vertical .reader-track { padding: 28px 16px 28px 26px; }
+  }
