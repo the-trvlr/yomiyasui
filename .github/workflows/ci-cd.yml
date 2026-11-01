@@ -20,10 +20,23 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install tooling
+        run: npm ci
       - name: Check whitespace
         run: git diff --check
-      - name: Validate HTML and inline JavaScript
-        run: node scripts/check-html.mjs site/index.html
+      - name: Check structure, versions and assets
+        run: npm run check
+      - name: Lint
+        run: npm run lint
+      - name: Check formatting
+        run: npm run format:check
+      - name: Run tests
+        run: npm test
 
   deploy:
     name: Deploy to GitHub Pages
@@ -40,12 +53,15 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Bundle runtime libraries and dictionaries
+        # Версия JMdict берётся из site/config.js — единственного источника истины.
         run: bash scripts/prepare-site-assets.sh
-        env:
-          JM_VERSION: 3.6.2+20261012204142
       - name: Upload static site
         uses: actions/upload-pages-artifact@v4
         with:
