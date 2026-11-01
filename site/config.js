@@ -7,7 +7,7 @@
  */
 
 /** Версия приложения, отображается в шапке и на экране первого запуска. */
-export const APP_VERSION = '1.1';
+export const APP_VERSION = '1.1.1';
 
 /** Снимок JMdict-Simplified. Формат: <версия>+<дата снимка>. */
 export const JM_VERSION = '3.6.2+20261012204142';

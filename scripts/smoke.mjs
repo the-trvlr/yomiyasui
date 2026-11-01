@@ -92,6 +92,48 @@ const VERTICAL_PROBE = `(() => {
   };
 })()`;
 
+/** Загружает книгу из трёх глав, чтобы проверить навигацию по главам. */
+const CHAPTER_BOOK = [1, 2, 3]
+  .map(
+    (chapter) =>
+      `# 第${chapter}章\n\n` +
+      Array.from(
+        { length: 8 },
+        (_, i) =>
+          `第${chapter}章の段落${i + 1}。静かな夜だった。窓の外では細い雨が降り続いていた。`,
+      ).join('\n\n'),
+  )
+  .join('\n\n');
+
+const CHAPTER_SETUP = `(() => {
+  const input = document.getElementById('textInput');
+  input.value = ${JSON.stringify(CHAPTER_BOOK)};
+  document.getElementById('applyText').click();
+  return 'ok';
+})()`;
+
+/** Переходы по главам: вперёд, назад и рестарт. */
+const CHAPTER_PROBE = `(() => {
+  const select = () => document.getElementById('chapterSelect').value;
+  const offset = () => {
+    const match = document.getElementById('track').style.transform.match(/-?[\\d.]+px/);
+    return Math.round(Number(match ? match[0].replace('px', '') : 0));
+  };
+  const click = (id) => document.getElementById(id).click();
+  const out = {};
+  click('restart');
+  out.start = { select: select(), offset: offset() };
+  click('nextChapter');
+  out.next1 = { select: select(), offset: offset() };
+  click('nextChapter');
+  out.next2 = { select: select(), offset: offset() };
+  click('prevChapter');
+  out.prev = { select: select(), offset: offset() };
+  click('restart');
+  out.restart = { select: select(), offset: offset() };
+  return out;
+})()`;
+
 const FINGERPRINT = `(() => {
   const copy = document.querySelector('#readingCopy');
   const clone = copy ? copy.cloneNode(true) : null;
@@ -205,7 +247,17 @@ async function waitFor(cdp, expression, timeoutMs = 20000) {
   return false;
 }
 
-async function capture(port, url, { deep = false, afterLoad = null, extra = null } = {}) {
+async function capture(
+  port,
+  url,
+  {
+    deep = false,
+    afterLoad = null,
+    extra = null,
+    readyExpression = null,
+    readyTimeout = 60000,
+  } = {},
+) {
   const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, {
     method: 'PUT',
   });
@@ -249,6 +301,10 @@ async function capture(port, url, { deep = false, afterLoad = null, extra = null
 
   if (afterLoad) {
     await evaluate(cdp, afterLoad);
+    if (readyExpression) {
+      const readyAgain = await waitFor(cdp, readyExpression, readyTimeout);
+      if (!readyAgain) errors.push('после подготовки страница не достигла нужного состояния');
+    }
     await delay(900);
   }
 
@@ -319,6 +375,13 @@ async function main() {
       afterLoad: VERTICAL_SETUP,
       extra: VERTICAL_PROBE,
     });
+    const chapters = await capture(devtoolsPort, `${base}/site/`, {
+      afterLoad: CHAPTER_SETUP,
+      readyExpression:
+        "document.getElementById('chapterSelect').options.length >= 3 && " +
+        "document.querySelectorAll('#readingCopy .word').length > 0",
+      extra: CHAPTER_PROBE,
+    });
 
     const keys = [
       ...new Set([...Object.keys(baseline.fingerprint), ...Object.keys(current.fingerprint)]),
@@ -365,6 +428,12 @@ async function main() {
         `прокрутка ${v.trackTransform}, жест тачпада: ${v.wheelMoved ? 'да' : 'нет'}`,
     );
 
+    const c = chapters.extra || {};
+    console.log(
+      `\nГлавы: старт ${c.start?.select}/${c.start?.offset}px, вперёд ${c.next1?.select}, ` +
+        `${c.next2?.select}, назад ${c.prev?.select} (${c.prev?.offset}px), рестарт ${c.restart?.select}/${c.restart?.offset}px`,
+    );
+
     const problems = [];
     if (mismatches.length) problems.push(`расхождения: ${mismatches.join(', ')}`);
     if (current.fingerprint.readerLang !== 'ja')
@@ -388,6 +457,18 @@ async function main() {
       problems.push(`перед текстом должно оставаться 0.5-0.9 ширины, получено ${v.startInset}`);
     }
     if (v.wheelMoved !== true) problems.push('горизонтальный жест тачпада не прокручивает текст');
+    if (chapters.errors.length)
+      problems.push(`ошибки в навигации по главам: ${chapters.errors.join(' | ')}`);
+    if (c.start?.select !== '0' || c.start?.offset !== 0)
+      problems.push('книга открылась не с первой главы');
+    if (c.next1?.select !== '1' || !(c.next1?.offset > 0))
+      problems.push('переход вперёд на главу 1 не сработал');
+    if (c.next2?.select !== '2' || !(c.next2?.offset > c.next1?.offset))
+      problems.push('переход вперёд на главу 2 не сработал');
+    if (c.prev?.select !== '1' || !(c.prev?.offset < c.next2?.offset))
+      problems.push('переход назад на главу 1 не сработал');
+    if (c.restart?.select !== '0' || c.restart?.offset !== 0)
+      problems.push('рестарт не вернул к началу книги');
     if (baseline.errors.length) problems.push(`ошибки в main: ${baseline.errors.join(' | ')}`);
 
     console.log();

@@ -400,8 +400,16 @@
     left: auto;
     right: calc(100% - var(--vertical-start-inset, 33%));
     height: auto;
+    /* Ширина по содержимому: иначе абсолютно позиционированный flex-контейнер
+       сжимается по shrink-to-fit. */
+    width: max-content;
     display: flex;
     align-items: center;
+    /* Набор столбцов всегда шире контейнера, и по умолчанию он переполнял его
+       вправо: правый край текста уезжал за экран, а координаты абзацев вдоль
+       оси чтения становились отрицательными — из-за этого ломались переходы
+       по главам. flex-end прижимает правый край текста к линии чтения. */
+    justify-content: flex-end;
     padding: 34px 22px 34px 34px;
   }
   .reader-shell.vertical .reader-copy {

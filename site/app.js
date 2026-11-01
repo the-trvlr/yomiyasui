@@ -80,6 +80,14 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   let analyzedParagraphs = [], currentWord = null, currentBookName = '';
   let currentBookId = null, currentBookRecord = null, libraryDBPromise = null;
   let bookLibrary = [], currentChapters = [], pendingRestoreRatio = null, lastProgressSaveAt = 0, lastUiUpdateAt = 0, progressSaveTimer = 0;
+  // Позиция, к которой пользователь перешёл вручную. Пока offset не сдвинулся,
+  // индикатор главы держим на ней: иначе пересчёт по порогу мог отщёлкнуть
+  // селектор и заблокировать стрелку «назад» сразу после перехода.
+  let pinnedChapter = null;
+  // Пользователь уже двигал текст после загрузки книги. Отложенное
+  // восстановление сохранённой позиции в этом случае отменяется, иначе оно
+  // перезаписывает переход и «рестарт» уезжает в конец прошлой сессии.
+  let userMovedSinceApply = false;
   let knownWords = loadKnownWords();
 
   function setSystemStatus(message, state='loading', retry=false) {
@@ -234,6 +242,9 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       if (!node || axisOffsetOf(node) <= target) index = i;
       else break;
     }
+    if (pinnedChapter && Math.abs(offset - pinnedChapter.offset) < 2 && pinnedChapter.index < currentChapters.length) {
+      index = pinnedChapter.index;
+    }
     const select = $('chapterSelect');
     if (select && Number(select.value) !== index) select.value = String(index);
     $('prevChapter').disabled = index <= 0;
@@ -269,13 +280,18 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     if (!copy.textContent.trim()) return;
     if (isFinished) resetReader();
     if (isPlaying) return;
+    userMovedSinceApply = true;
     isFinished = false; setState(true); lastTime = 0; stopAnimation(); rafId = requestAnimationFrame(tick);
   }
   function pause(save=true) { stopAnimation(); setState(false); if(save) saveCurrentProgress(); }
   function togglePlayback() { if (isPlaying) pause(); else play(); }
-  function resetReader() { pause(); offset = 0; isFinished = false; updateTransform(); setState(false); reader.scrollTop = 0; updateSeekUI(); saveCurrentProgress(); }
+  function resetReader() {
+    pinnedChapter = null; userMovedSinceApply = true;
+    pause(); offset = 0; isFinished = false; updateTransform(); setState(false); reader.scrollTop = 0; updateSeekUI(); saveCurrentProgress();
+  }
   function seekToRatio(ratio, persist=true) {
     pause(false);
+    pinnedChapter = null; userMovedSinceApply = true;
     const clamped = Math.max(0, Math.min(1, Number(ratio) || 0));
     offset = clamped * getMaxOffset(); isFinished = clamped >= 0.9995;
     updateTransform(); updateSeekUI(); setState(false);
@@ -301,6 +317,10 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       const desiredY = reader.getBoundingClientRect().top + reader.clientHeight * 0.37;
       offset = Math.max(0, Math.min(getMaxOffset(), offset + rect.top - desiredY));
     }
+    // Фиксируем выбранную главу и не даём отложенному восстановлению позиции
+    // переписать переход пользователя.
+    pinnedChapter = { index: i, offset };
+    userMovedSinceApply = true;
     isFinished = false; updateTransform(); updateSeekUI(); $('chapterSelect').value = String(i); saveCurrentProgress();
   }
   function applyOrientationStyles() {
@@ -314,6 +334,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     // Доля прочитанного переносится на новую раскладку: пиксельная позиция
     // между режимами несопоставима, а прогресс по книге — да.
     const ratio = getProgressRatio();
+    pinnedChapter = null;
     textOrientation = next;
     applyOrientationStyles();
     if (persist) {
@@ -338,6 +359,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     $('fontSizeValue').textContent = `${fontSize} px`;
     // Отступ перед текстом в 縦書き зависит от размера шрифта и интервала.
     document.documentElement.style.setProperty('--vertical-start-inset', `${verticalStartInset()}px`);
+    pinnedChapter = null;
     requestAnimationFrame(() => { const maxOffset = getMaxOffset(); if (offset > maxOffset) offset = maxOffset; updateTransform(); updateSeekUI(); scheduleProgressSave(); });
   }
 
@@ -754,12 +776,19 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     else if (!currentChapters.length || (!opts.preservePosition && opts.source!=='library' && !opts.bookId)) currentChapters=plainDocument(clean,opts.title||currentBookName||'Текст').chapters;
     if (!opts.preservePosition) { offset=0; isFinished=false; pause(false); }
     pendingRestoreRatio=opts.restoreRatio==null ? (opts.preservePosition ? getProgressRatio() : 0) : Number(opts.restoreRatio)||0;
+    // Новая книга: пользователь ещё ничего не сдвигал, отложенное восстановление уместно.
+    userMovedSinceApply=false;
+    pinnedChapter=null;
     renderChapterControls(); renderBookmarkControls();
     if (!clean) { renderAnalyzedText(); setSystemStatus('Текст очищен. Открой EPUB / TXT или вставь фрагмент.', 'ready'); return; }
     renderAnalyzedText();
     setSystemStatus(`Текст загружен: ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз. Подключаю анализатор…`);
     const restore=()=>new Promise(resolve=>requestAnimationFrame(()=>{
       if(version!==renderVersion) { resolve(); return; }
+      // Анализ большого текста идёт долго, особенно на телефоне. Если за это время
+      // пользователь уже перешёл к другой главе или нажал «рестарт», сохранённая
+      // позиция не должна его откатывать.
+      if (userMovedSinceApply) { pendingRestoreRatio=null; resolve(); return; }
       const ratio=pendingRestoreRatio || 0; offset=Math.max(0,Math.min(getMaxOffset(),ratio*getMaxOffset()));
       pendingRestoreRatio=null; isFinished=ratio>=0.9995; updateTransform(); updateSeekUI(); setState(false);
       if(currentBookId) saveCurrentProgress();
