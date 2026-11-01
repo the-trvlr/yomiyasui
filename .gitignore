@@ -13,3 +13,8 @@ coverage/
 site/vendor/
 site/data/jmdict-*.json.zip
 site/data/EDRDG-LICENSE.html
+
+# Локальная копия ветки main для сравнения версий
+baseline/
+.npm-cache/
+.cache/

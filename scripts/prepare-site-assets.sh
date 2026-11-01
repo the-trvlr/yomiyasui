@@ -4,7 +4,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SITE="$ROOT/site"
 WORK="$(mktemp -d)"
-JM_VERSION="${JM_VERSION:-3.6.2+20261012204142}"
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is required to read the dictionary version from site/config.js." >&2
+  exit 1
+fi
+# Единственный источник версии — site/config.js; переменная окружения остаётся
+# как аварийный ручной переопределитель для отладки.
+JM_VERSION="${JM_VERSION:-$(node --input-type=module -e "const m = await import('$SITE/config.js'); process.stdout.write(m.JM_VERSION);")}"
 trap 'rm -rf "$WORK"' EXIT
 
 mkdir -p "$SITE/vendor/kuromoji/build" "$SITE/vendor/kuromoji/dict" "$SITE/vendor/jszip/dist" "$SITE/data"
