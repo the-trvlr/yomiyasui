@@ -50,8 +50,23 @@ const VERTICAL_PROBE = `(() => {
   const reader = document.querySelector('#reader');
   const track = document.querySelector('#track');
   const style = getComputedStyle(copy);
-  const slider = document.getElementById('bookPosition');
-  if (slider) { slider.value = '400'; slider.dispatchEvent(new Event('input', { bubbles: true })); }
+  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize);
+
+  // В начало книги: проверяем, что видно только первые столбцы и что перед
+  // текстом остаётся пустое место.
+  document.getElementById('restart').click();
+  const readerRect = reader.getBoundingClientRect();
+  const firstRect = copy.firstElementChild.getBoundingClientRect();
+  const startColumns = Math.round(Math.max(0, firstRect.right - readerRect.left) / lineHeight);
+  const startInset = Math.round(((readerRect.right - firstRect.right) / reader.clientWidth) * 100) / 100;
+
+  // Жест двумя пальцами по горизонтали приходит как deltaX.
+  const beforeWheel = track.style.transform;
+  reader.dispatchEvent(
+    new WheelEvent('wheel', { deltaX: 240, deltaY: 0, bubbles: true, cancelable: true }),
+  );
+  const afterWheel = track.style.transform;
+
   let rubyOnRight = null;
   const ruby = copy.querySelector('ruby');
   if (ruby && ruby.firstChild) {
@@ -61,14 +76,17 @@ const VERTICAL_PROBE = `(() => {
     const rt = ruby.querySelector('rt');
     rubyOnRight = rt ? rt.getBoundingClientRect().left >= base.right - 1 : null;
   }
-  const copyRect = copy.getBoundingClientRect();
-  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize);
+
+  const slider = document.getElementById('bookPosition');
+  if (slider) { slider.value = '400'; slider.dispatchEvent(new Event('input', { bubbles: true })); }
   return {
     writingMode: style.writingMode,
     rubyOnRight,
     trackTransform: track.style.transform,
-    columns: Math.round(copyRect.width / lineHeight),
-    copyHeight: Math.round(copyRect.height),
+    wheelMoved: beforeWheel !== afterWheel,
+    startColumns,
+    startInset,
+    columns: Math.round(copy.getBoundingClientRect().width / lineHeight),
     readerWidth: reader.clientWidth,
     progress: document.getElementById('positionLabel').textContent
   };
@@ -342,8 +360,9 @@ async function main() {
 
     const v = vertical.extra || {};
     console.log(
-      `\n縦書き: writing-mode=${v.writingMode}, столбцов ${v.columns}, фуригана справа: ${v.rubyOnRight}, ` +
-        `прокрутка ${v.trackTransform}, прогресс ${v.progress}`,
+      `\n縦書き: writing-mode=${v.writingMode}, столбцов всего ${v.columns}, в начале видно ${v.startColumns}, ` +
+        `пустое поле перед текстом ${v.startInset} ширины, фуригана справа: ${v.rubyOnRight}, ` +
+        `прокрутка ${v.trackTransform}, жест тачпада: ${v.wheelMoved ? 'да' : 'нет'}`,
     );
 
     const problems = [];
@@ -362,6 +381,13 @@ async function main() {
       problems.push(`прокрутка не по горизонтали: ${v.trackTransform}`);
     if (v.rubyOnRight !== true) problems.push('фуригана не справа от текста');
     if (!(v.columns > 1)) problems.push(`ожидалось несколько столбцов, получено ${v.columns}`);
+    if (!(v.startColumns >= 1 && v.startColumns <= 4)) {
+      problems.push(`в начале должно быть видно 1-4 столбца, получено ${v.startColumns}`);
+    }
+    if (!(v.startInset >= 0.5 && v.startInset <= 0.9)) {
+      problems.push(`перед текстом должно оставаться 0.5-0.9 ширины, получено ${v.startInset}`);
+    }
+    if (v.wheelMoved !== true) problems.push('горизонтальный жест тачпада не прокручивает текст');
     if (baseline.errors.length) problems.push(`ошибки в main: ${baseline.errors.join(' | ')}`);
 
     console.log();

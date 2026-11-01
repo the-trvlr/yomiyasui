@@ -65,6 +65,10 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
 
   let offset = 0, lastTime = 0, rafId = 0, isPlaying = false, isFinished = false;
   const ORIENTATION_KEY = 'kotoba-orientation';
+  // Сколько столбцов оставить перед текстом в 縦書き: в начале видно только
+  // первые две строки, остальное — запас, в который текст уезжает при прокрутке.
+  // Зеркально горизонтальному режиму, где над текстом остаётся 70% высоты.
+  const VERTICAL_START_COLUMNS = 2.4;
   let textOrientation = 'horizontal';
   try {
     if (localStorage.getItem(ORIENTATION_KEY) === 'vertical') textOrientation = 'vertical';
@@ -191,10 +195,17 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   function updateTransform() {
     track.style.transform = isVertical() ? `translateX(${offset}px)` : `translateY(${-offset}px)`;
   }
+  // Ширина пустого поля перед текстом в 縦書き — два с небольшим столбца.
+  // Ширина столбца равна межстрочному интервалу в пикселях.
+  function verticalStartInset() {
+    return Number($('fontSize').value) * Number($('leading').value) * VERTICAL_START_COLUMNS;
+  }
   function getMaxOffset() {
-    // Горизонтально текст входит снизу и уходит вверх; вертикально — входит
-    // справа и уходит вправо, освобождая место следующим столбцам.
-    if (isVertical()) return Math.max(1, contentAxisSize() + 12);
+    // Горизонтально текст входит снизу и уходит вверх; вертикально — входит слева
+    // и уходит вправо, освобождая место следующим столбцам.
+    if (isVertical()) {
+      return Math.max(1, reader.clientWidth - verticalStartInset() + contentAxisSize() + 12);
+    }
     return Math.max(1, reader.clientHeight * 0.7 + contentAxisSize() + 12);
   }
   function getProgressRatio() { return Math.max(0, Math.min(1, offset / getMaxOffset())); }
@@ -279,10 +290,11 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     pause(false);
     if (i === 0) offset = 0;
     else if (isVertical()) {
-      // Столбцы идут справа налево: ставим начало главы к правому краю,
-      // чтобы чтение начиналось с заголовка.
+      // Столбцы идут справа налево: ставим начало главы на линию чтения,
+      // чтобы чтение начиналось с заголовка и первых столбцов.
+      const readerRect = reader.getBoundingClientRect();
       const rect = node.getBoundingClientRect();
-      const desiredRight = reader.getBoundingClientRect().right - 8;
+      const desiredRight = readerRect.left + verticalStartInset() - 6;
       offset = Math.max(0, Math.min(getMaxOffset(), offset + desiredRight - rect.right));
     } else {
       const rect = node.getBoundingClientRect();
@@ -324,6 +336,8 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     $('lineWidthValue').textContent = `${width} знаков`;
     $('leadingValue').textContent = `${leading.toFixed(2).replace('.', ',')}×`;
     $('fontSizeValue').textContent = `${fontSize} px`;
+    // Отступ перед текстом в 縦書き зависит от размера шрифта и интервала.
+    document.documentElement.style.setProperty('--vertical-start-inset', `${verticalStartInset()}px`);
     requestAnimationFrame(() => { const maxOffset = getMaxOffset(); if (offset > maxOffset) offset = maxOffset; updateTransform(); updateSeekUI(); scheduleProgressSave(); });
   }
 
@@ -1503,7 +1517,14 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   reader.addEventListener('wheel', event => {
     if (!copy.textContent.trim()) return;
     event.preventDefault(); pause(false);
-    offset=Math.max(0,Math.min(getMaxOffset(),offset+event.deltaY*1.75));
+    // Тачпад присылает жест двумя пальцами как deltaY, а боком — как deltaX.
+    // В вертикальном режиме боковой жест естественнее, поэтому берём
+    // доминирующую ось, иначе прокрутка просто не срабатывала.
+    const lineHeight = Number(event.deltaMode) === 1 ? 16 : 1;
+    const delta = isVertical() && Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ? event.deltaX
+      : event.deltaY;
+    offset=Math.max(0,Math.min(getMaxOffset(),offset+delta*lineHeight*1.75));
     isFinished=offset>=getMaxOffset()-1; updateTransform(); updateSeekUI(); scheduleProgressSave();
   },{passive:false});
   document.addEventListener('keydown', event => {
