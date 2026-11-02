@@ -1857,4 +1857,22 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     if(lastId&&bookLibrary.some(b=>b.id===lastId)) await activateSavedBook(lastId);
   });
   // Словарь и анализатор грузятся параллельно; ресурсы отдаются локально и кэшируются в IndexedDB.
+
+  // Service Worker: установка как приложение и работа без сети. Регистрируем
+  // после загрузки, чтобы не конкурировать с анализатором и словарём.
+  if ('serviceWorker' in navigator) {
+    const register = () => {
+      navigator.serviceWorker
+        .register('./sw.js', { updateViaCache: 'none' })
+        .catch((err) => console.warn('Service Worker не зарегистрирован:', err));
+    };
+    if (document.readyState === 'complete') register();
+    else window.addEventListener('load', register, { once: true });
+  }
+  window.addEventListener('offline', () => {
+    setSystemStatus('Нет сети. Чтение, фуригана и сохранённый словарь работают из кэша.', 'error');
+  });
+  window.addEventListener('online', () => {
+    setSystemStatus('Сеть восстановлена.', 'ready');
+  });
 })();
