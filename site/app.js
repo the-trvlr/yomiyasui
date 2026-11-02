@@ -49,7 +49,10 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   // двух архивов в браузере. core — частые слова, чтобы поиск заработал сразу.
   const COMPILED_DICT = {
     core: appAssetUrl(`data/dict-core-${JM_VERSION}.json`),
-    full: appAssetUrl(`data/dict-${JM_VERSION}.json`)
+    full: appAssetUrl(`data/dict-${JM_VERSION}.json`),
+    formsCore: appAssetUrl(`data/forms-core-${JM_VERSION}.json`),
+    formsFull: appAssetUrl(`data/forms-${JM_VERSION}.json`),
+    gloss: appAssetUrl(`data/gloss-${JM_VERSION}.json`)
   };
   // The manual-download links live in the HTML; derive them from the single version source
   // so the archive name can never drift from config.js.
@@ -57,7 +60,13 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     const link = document.querySelector(`[data-dict-zip="${language}"]`);
     if (link) link.href = url;
   }
-  let dictionaryById = new Map(), dictionaryEntries = [], formIndex = new Map(), prefixIndex = new Map();
+  let dictionaryById = new Map(), dictionaryEntries = [];
+  // Индекс форм приходит с CI уже отсортированным: два параллельных массива
+  // вместо Map на полмиллиона ключей и нормализации каждой формы в браузере.
+  let formKeys = [], formIds = [];
+  // Индекс переводов грузится отдельно и только когда нужен: он весит 4,7 МБ
+  // gzip, и до первого поиска по переводу эти байты не нужны.
+  let glossKeys = [], glossIds = [], glossLoadingPromise = null;
   let dictionaryLoaded = false, dictionaryLoadingPromise = null, dictionaryLoadFailed = false, dictionarySearchTimer = 0;
   let dictionaryDBPromise = null, activeDictionaryEntryId = null, dictionaryView = 'results';
 
@@ -99,6 +108,8 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   let userMovedSinceApply = false;
   let knownWords = loadKnownWords();
 
+  // Метки для профилирования: scripts/measure.mjs читает их через performance.
+  const perfMark = (name) => { try { performance.mark(name); } catch (_) {} };
   function setSystemStatus(message, state='loading', retry=false) {
     systemStatus.textContent = message;
     systemIndicator.className = 'status-indicator' + (state === 'ready' ? ' ready' : state === 'error' ? ' error' : '');
@@ -909,6 +920,64 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
 
   function uniqueStrings(items) { return [...new Set(items.map(x => String(x || '').trim()).filter(Boolean))]; }
   function normalizeSearch(value) { return String(value || '').normalize('NFKC').trim().toLocaleLowerCase(); }
+  // Ромадзи → хирагана: позволяет искать «taberu», не переключая раскладку.
+  const ROMAJI_TABLE = (() => {
+    const table = {
+      a:'あ', i:'い', u:'う', e:'え', o:'お',
+      ka:'か', ki:'き', ku:'く', ke:'け', ko:'こ',
+      sa:'さ', shi:'し', si:'し', su:'す', se:'せ', so:'そ',
+      ta:'た', chi:'ち', ti:'ち', tsu:'つ', tu:'つ', te:'て', to:'と',
+      na:'な', ni:'に', nu:'ぬ', ne:'ね', no:'の',
+      ha:'は', hi:'ひ', fu:'ふ', hu:'ふ', he:'へ', ho:'ほ',
+      ma:'ま', mi:'み', mu:'む', me:'め', mo:'も',
+      ya:'や', yu:'ゆ', yo:'よ',
+      ra:'ら', ri:'り', ru:'る', re:'れ', ro:'ろ',
+      wa:'わ', wo:'を', "n'":'ん',
+      ga:'が', gi:'ぎ', gu:'ぐ', ge:'げ', go:'ご',
+      za:'ざ', ji:'じ', zi:'じ', zu:'ず', ze:'ぜ', zo:'ぞ',
+      da:'だ', di:'ぢ', du:'づ', de:'で', do:'ど',
+      ba:'ば', bi:'び', bu:'ぶ', be:'べ', bo:'ぼ',
+      pa:'ぱ', pi:'ぴ', pu:'ぷ', pe:'ぺ', po:'ぽ',
+      kya:'きゃ', kyu:'きゅ', kyo:'きょ', gya:'ぎゃ', gyu:'ぎゅ', gyo:'ぎょ',
+      sha:'しゃ', shu:'しゅ', sho:'しょ', sya:'しゃ', syu:'しゅ', syo:'しょ',
+      ja:'じゃ', ju:'じゅ', jo:'じょ', jya:'じゃ', jyu:'じゅ', jyo:'じょ',
+      cha:'ちゃ', chu:'ちゅ', cho:'ちょ', tya:'ちゃ', tyu:'ちゅ', tyo:'ちょ',
+      nya:'にゃ', nyu:'にゅ', nyo:'にょ',
+      hya:'ひゃ', hyu:'ひゅ', hyo:'ひょ', bya:'びゃ', byu:'びゅ', byo:'びょ',
+      pya:'ぴゃ', pyu:'ぴゅ', pyo:'ぴょ',
+      mya:'みゃ', myu:'みゅ', myo:'みょ',
+      rya:'りゃ', ryu:'りゅ', ryo:'りょ',
+    };
+    return table;
+  })();
+  function romajiToHiragana(value) {
+    const text = String(value || '').toLowerCase().trim();
+    if (!/^[a-z'\- ]+$/.test(text)) return '';
+    let out = '', rest = text.replace(/\s+/g, '');
+    const vowels = 'aiueo';
+    while (rest) {
+      // Одиночная n в конце или перед согласной — ん (hon → ほん, konnichi → こんにち).
+      if (rest === 'n') { out += 'ん'; break; }
+      if (rest[0] === 'n' && !vowels.includes(rest[1]) && rest[1] !== 'y' && rest[1] !== "'") {
+        out += 'ん'; rest = rest.slice(1); continue;
+      }
+      // matcha → まっちゃ: t перед ch даёт малую っ.
+      if (rest.startsWith('tch')) { out += 'っ'; rest = rest.slice(1); continue; }
+      // Удвоенная согласная — малая っ (gakkou → がっこう).
+      if (rest.length > 1 && rest[0] === rest[1] && !vowels.includes(rest[0]) && rest[0] !== 'n') {
+        out += 'っ'; rest = rest.slice(1); continue;
+      }
+      let matched = false;
+      for (let length = 3; length >= 1; length--) {
+        const chunk = rest.slice(0, length);
+        if (ROMAJI_TABLE[chunk]) { out += ROMAJI_TABLE[chunk]; rest = rest.slice(length); matched = true; break; }
+      }
+      if (matched) continue;
+      if (rest[0] === '-') { out += 'ー'; rest = rest.slice(1); continue; }
+      return '';
+    }
+    return out;
+  }
   function searchHasJapanese(value) { return /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff々〆ヶ]/.test(value || ''); }
   function toKatakana(value) { return String(value || '').replace(/[\u3041-\u3096]/g, ch => String.fromCharCode(ch.charCodeAt(0) + 0x60)); }
   function preferredWriting(entry) {
@@ -1047,7 +1116,8 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     dictionaryById = next;
     try { data.entries.length = 0; } catch (_) {}
   }
-  async function fetchCompiledDictionary(key, label) {
+  async function fetchCompiledDictionary(key, label, { quiet = false } = {}) {
+    perfMark(`dict:${key}:fetch:start`);
     const response = await fetchWithTimeout(COMPILED_DICT[key], { credentials: 'omit', cache: 'force-cache' }, 180000);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     let buffer;
@@ -1060,6 +1130,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
         if (part.done) break;
         chunks.push(part.value);
         received += part.value.byteLength;
+        if (quiet) continue;
         const mb = (received / 1048576).toFixed(1).replace('.', ',');
         const totalText = total ? ` / ${(total / 1048576).toFixed(1).replace('.', ',')} МБ` : '';
         updateDictStatus(`Скачиваю ${label}: ${mb}${totalText}`);
@@ -1071,8 +1142,11 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     } else {
       buffer = await response.arrayBuffer();
     }
-    updateDictStatus(`Разбираю ${label}…`);
-    return JSON.parse(new TextDecoder().decode(buffer));
+    perfMark(`dict:${key}:fetched`);
+    if (!quiet) updateDictStatus(`Разбираю ${label}…`);
+    const parsed = JSON.parse(new TextDecoder().decode(buffer));
+    perfMark(`dict:${key}:parsed`);
+    return parsed;
   }
   async function parseDictionaryArchive(input, forcedLanguage=null, fileName='') {
     const JSZip = await ensureJSZip();
@@ -1128,9 +1202,92 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     if(rebuildIndex) await updateDictionaryIndex();
     if(statusLabel) updateDictStatus(statusLabel, 'ready');
   }
-  async function updateDictionaryIndex() {
-    dictionaryEntries=[...dictionaryById.values()];
-    formIndex=new Map(); prefixIndex=new Map();
+  function refreshDictionaryEntries() { dictionaryEntries=[...dictionaryById.values()]; }
+  /** Индекс из собранного на CI файла: массивы уже отсортированы по форме. */
+  function applyCompiledForms(rows) {
+    formKeys=new Array(rows.length); formIds=new Array(rows.length);
+    for(let i=0;i<rows.length;i++) { formKeys[i]=rows[i][0]; formIds[i]=rows[i][1]||[]; }
+  }
+  function formLowerBound(needle) {
+    let low=0, high=formKeys.length;
+    while(low<high) { const mid=(low+high)>>1; if(formKeys[mid]<needle) low=mid+1; else high=mid; }
+    return low;
+  }
+  function formEntries(norm) {
+    if(!norm || !formKeys.length) return [];
+    const index=formLowerBound(norm);
+    if(index>=formKeys.length || formKeys[index]!==norm) return [];
+    const out=[];
+    for(const entryIndex of formIds[index]) { const entry=dictionaryEntries[entryIndex]; if(entry) out.push(entry); }
+    return out;
+  }
+  function forEachFormWithPrefix(prefix, visit) {
+    if(!prefix || !formKeys.length) return;
+    for(let index=formLowerBound(prefix); index<formKeys.length; index++) {
+      const form=formKeys[index];
+      if(!form.startsWith(prefix)) break;
+      if(visit(form, formIds[index])===false) break;
+    }
+  }
+  function applyGlossIndex(rows) {
+    glossKeys=new Array(rows.length); glossIds=new Array(rows.length);
+    for(let i=0;i<rows.length;i++) { glossKeys[i]=rows[i][0]; glossIds[i]=rows[i][1]||[]; }
+  }
+  function glossLowerBound(needle) {
+    let low=0, high=glossKeys.length;
+    while(low<high) { const mid=(low+high)>>1; if(glossKeys[mid]<needle) low=mid+1; else high=mid; }
+    return low;
+  }
+  async function ensureGlossIndex() {
+    if(glossKeys.length) return true;
+    if(glossLoadingPromise) return glossLoadingPromise;
+    glossLoadingPromise=(async()=>{
+      try {
+        // Тихо: словарь уже готов и показывает свой статус, фоновая догрузка
+        // не должна его перетирать.
+        const data=await fetchCompiledDictionary('gloss','индекс переводов',{quiet:true});
+        applyGlossIndex(data.gloss||[]);
+        if(dictSearch.value.trim()) queueDictionarySearch(true);
+        return true;
+      } catch(err) {
+        // Без индекса поиск по переводу работает как раньше — полным перебором.
+        console.warn('Gloss index unavailable:', err);
+        return false;
+      } finally { glossLoadingPromise=null; }
+    })();
+    return glossLoadingPromise;
+  }
+  /**
+   * Кандидаты для запроса по переводу. null означает «индекса нет» — тогда
+   * ищем перебором, как раньше. Многословные запросы тоже идут перебором:
+   * индекс построен по отдельным словам.
+   */
+  function glossCandidates(query) {
+    if(!glossKeys.length) { ensureGlossIndex(); return null; }
+    const q=cleanGlossText(query);
+    if(!q || /\s/u.test(q)) return null;
+    const keys=new Set([q]);
+    const stem=russianWordStem(q);
+    if(stem && stem!==q) keys.add(stem);
+    const found=new Set();
+    for(const key of keys) {
+      const at=glossLowerBound(key);
+      if(at<glossKeys.length && glossKeys[at]===key) for(const id of glossIds[at]) found.add(id);
+      if(key.length>=3) {
+        let scanned=0;
+        for(let i=glossLowerBound(key); i<glossKeys.length && scanned<3000; i++,scanned++) {
+          if(!glossKeys[i].startsWith(key)) break;
+          for(const id of glossIds[i]) found.add(id);
+        }
+      }
+    }
+    const out=[];
+    for(const id of found) { const entry=dictionaryEntries[id]; if(entry) out.push(entry); }
+    return out;
+  }
+  /** Ручной импорт архивов: индекс приходится строить здесь. */
+  async function rebuildFormIndex() {
+    const map=new Map();
     const total=dictionaryEntries.length;
     for(let i=0;i<total;i++) {
       if(i && i%5000===0) {
@@ -1141,16 +1298,15 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       const forms=new Set([...(entry.kanji||[]).map(x=>x.text),...(entry.kana||[]).map(x=>x.text)]);
       for(const form of forms) {
         const norm=normalizeSearch(form); if(!norm) continue;
-        if(!formIndex.has(norm)) formIndex.set(norm,[]);
-        formIndex.get(norm).push(entry);
-        const chars=[...norm];
-        if(chars.length>=2) {
-          const prefix=chars.slice(0,2).join('');
-          if(!prefixIndex.has(prefix)) prefixIndex.set(prefix,[]);
-          prefixIndex.get(prefix).push(norm);
-        }
+        if(!map.has(norm)) map.set(norm,[]);
+        map.get(norm).push(i);
       }
     }
+    applyCompiledForms([...map.entries()].sort((a,b)=>(a[0]<b[0]?-1:a[0]>b[0]?1:0)));
+  }
+  async function updateDictionaryIndex({ rebuildForms = true } = {}) {
+    refreshDictionaryEntries();
+    if(rebuildForms) await rebuildFormIndex();
     dictionaryLoaded=dictionaryEntries.length>0;
     dictStateDot.classList.toggle('ready',dictionaryLoaded);
     dictStateDot.classList.toggle('error',dictionaryLoadFailed);
@@ -1170,21 +1326,30 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     updateBootDictionaryProgress(message,state);
   }
   /** Загружает собранный на CI словарь: сначала частые слова, потом полный набор. */
+  async function loadCompiledStage(entriesKey, formsKey, label) {
+    const data = await fetchCompiledDictionary(entriesKey, label);
+    await ingestCompiledDictionary(data, `Индексирую ${label}`);
+    perfMark(`dict:${entriesKey}:ingested`);
+    refreshDictionaryEntries();
+    const forms = await fetchCompiledDictionary(formsKey, `индекс форм ${label}`);
+    applyCompiledForms(forms.forms || []);
+    perfMark(`dict:${entriesKey}:forms`);
+    await updateDictionaryIndex({ rebuildForms: false });
+    perfMark(`dict:${entriesKey}:indexed`);
+  }
+
   async function loadCompiledDictionary() {
     try {
-      const core = await fetchCompiledDictionary('core', 'частый словарь');
-      await ingestCompiledDictionary(core, 'Индексирую частый словарь');
-      updateDictStatus('Индексирую частый словарь…');
-      await updateDictionaryIndex();
+      await loadCompiledStage('core', 'formsCore', 'частый словарь');
       updateDictStatus(`Базовый словарь · ${dictionaryEntries.length.toLocaleString('ru-RU')} частых слов · догружаю полный…`);
     } catch (err) {
       // Ядро — оптимизация: без него грузим сразу полный словарь.
       console.warn('Compiled core dictionary unavailable:', err);
     }
-    const full = await fetchCompiledDictionary('full', 'полный словарь');
-    await ingestCompiledDictionary(full, 'Индексирую полный словарь');
-    updateDictStatus('Индексирую полный словарь…');
-    await updateDictionaryIndex();
+    await loadCompiledStage('full', 'formsFull', 'полный словарь');
+    // Индекс переводов нужен только для поиска по русскому/английскому.
+    // Грузим в фоне, чтобы не задерживать готовность словаря.
+    ensureGlossIndex();
   }
 
   async function loadFullDictionary(force=false) {
@@ -1355,28 +1520,35 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   }
 
   function searchDictionary(query, limit=35) {
-    const q=normalizeSearch(query); if(!q || !dictionaryEntries.length) return [];
+    // Ромадзи ищем как кану: «taberu» → たべる.
+    const romaji=romajiToHiragana(query);
+    const effective=romaji || query;
+    const q=normalizeSearch(effective); if(!q || !dictionaryEntries.length) return [];
     const keys=[q];
     if(searchHasJapanese(q)) {
       const h=normalizeSearch(toHiragana(q)), k=normalizeSearch(toKatakana(q));
       if(h && !keys.includes(h)) keys.push(h); if(k && !keys.includes(k)) keys.push(k);
       const found=new Map();
-      for(const key of keys) for(const entry of (formIndex.get(key)||[])) found.set(entry.id,{entry,score:100});
+      for(const key of keys) for(const entry of formEntries(key)) found.set(entry.id,{entry,score:100});
       if([...q].length>=2 && found.size<limit*2) {
         const chars=[...q], pref=chars.slice(0,2).join('');
-        for(const form of (prefixIndex.get(pref)||[])) {
-          if(keys.some(key=>form.startsWith(key))) for(const entry of (formIndex.get(form)||[])) {
-            if(!found.has(entry.id)) found.set(entry.id,{entry,score:55});
+        forEachFormWithPrefix(pref, (form, ids) => {
+          if(keys.some(key=>form.startsWith(key))) {
+            for(const entryIndex of ids) {
+              const entry=dictionaryEntries[entryIndex];
+              if(entry && !found.has(entry.id)) found.set(entry.id,{entry,score:55});
+            }
           }
-          if(found.size>=limit*5) break;
-        }
+          return found.size<limit*5;
+        });
       }
       return [...found.values()].sort((a,b)=>b.score-a.score || Number(dictionaryEntryCommon(b.entry))-Number(dictionaryEntryCommon(a.entry)) || a.entry.id.localeCompare(b.entry.id)).slice(0,limit).map(x=>x.entry);
     }
     // Cyrillic queries search Russian glosses only, avoiding irrelevant English matches.
     const russianOnly = isCyrillicQuery(q);
     const matches=[];
-    for(const entry of dictionaryEntries) {
+    const pool = glossCandidates(query);
+    for(const entry of (pool ?? dictionaryEntries)) {
       let score=0;
       for(const sense of (entry.rusSenses||[])) {
         for(const def of (sense.defs||[])) score=Math.max(score,translationMatchScore(def,q));
@@ -1459,7 +1631,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   }
   function findEntryForContext(wordContext) {
     for(const candidate of [wordContext.basic,wordContext.surface]) {
-      const list=formIndex.get(normalizeSearch(candidate))||[];
+      const list=formEntries(normalizeSearch(candidate));
       if(list.length) return list.find(e=>preferredReading(e,preferredWriting(e)) && toHiragana(preferredReading(e,preferredWriting(e)))===toHiragana(wordContext.reading)) || list.find(dictionaryEntryCommon) || list[0];
     }
     return null;
@@ -1492,8 +1664,12 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       if(!dictionaryEntries.length) { renderSearchResults([],query); return; }
       const entries=searchDictionary(query,35); renderSearchResults(entries,query);
       // For exact Japanese lookup, preview the best exact entry without making the search field jump.
-      if(searchHasJapanese(query)) {
-        const exact=(formIndex.get(normalizeSearch(query)) || formIndex.get(normalizeSearch(toHiragana(query))) || formIndex.get(normalizeSearch(toKatakana(query))) || []);
+      if(searchHasJapanese(romajiToHiragana(query) || query)) {
+        let exact=[];
+        const romajiQuery=romajiToHiragana(query) || query;
+        for(const candidate of [normalizeSearch(romajiQuery), normalizeSearch(toHiragana(romajiQuery)), normalizeSearch(toKatakana(romajiQuery))]) {
+          exact=formEntries(candidate); if(exact.length) break;
+        }
         if(exact.length && !currentWord?.tokenContext && !activeDictionaryEntryId) showDictionaryEntry(exact.find(dictionaryEntryCommon)||exact[0]);
       }
     };

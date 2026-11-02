@@ -19,3 +19,5 @@ baseline/
 .npm-cache/
 .cache/
 site/data/dict-*.json
+site/data/forms-*.json
+site/data/gloss-*.json

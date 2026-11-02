@@ -155,47 +155,70 @@ await send('Page.navigate', { url });
 
 const tDemo = await waitFor("document.querySelectorAll('#readingCopy p').length > 0", 30000);
 
-// Когда словарь впервые пригоден для поиска (ядро частых слов) и когда
-// загружен полностью. Обе метки снимаются одним опросом, чтобы не искажать загрузку.
-const statusText =
-  "document.getElementById('dictLoadStatus').textContent + document.getElementById('systemStatus').textContent";
-let tSearchReady = null;
-let tDictionary = null;
-const waitStarted = Date.now();
-while (Date.now() - waitStarted < timeout) {
-  const text = await evaluate(statusText).catch(() => '');
-  if (tSearchReady === null && /(Базовый словарь|Полный JMdict)/.test(text)) {
-    tSearchReady = Date.now() - waitStarted;
-  }
-  if (tDictionary === null && /Полный JMdict/.test(text)) {
-    tDictionary = Date.now() - waitStarted;
-  }
-  if (tDictionary !== null) break;
-  await delay(150);
-}
+// Ждём полной готовности словаря. Точные промежуточные метки берём из
+// performance.mark() в приложении — статус «ядро готово» живёт слишком мало.
+const readyAt = await waitFor(
+  "/Полный JMdict/.test(document.getElementById('dictLoadStatus').textContent)",
+  timeout,
+);
 
 const status = await evaluate(
   "document.getElementById('dictLoadStatus').textContent || document.getElementById('systemStatus').textContent",
 );
 
 async function search(query) {
+  // Сбрасываем прошлую выдачу, иначе waitFor сработает на старых результатах.
+  await evaluate(
+    `(() => { document.getElementById('clearDictSearch')?.click(); document.getElementById('dictSearch').value = ''; })()`,
+  );
+  await delay(150);
+  // Время считаем в самой странице: от ввода до отрисованного результата.
+  await evaluate(`window.__searchStarted = performance.now()`);
   await evaluate(
     `(() => { const input = document.getElementById('dictSearch'); input.value = ${JSON.stringify(
       query,
     )}; input.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   );
-  await delay(500);
   const found = await waitFor("document.querySelectorAll('.dict-result').length > 0", 15000);
-  await delay(400);
+  await delay(200);
   const count = await evaluate("document.querySelectorAll('.dict-result').length");
   const first = await evaluate(
     "document.querySelector('.dict-result .dict-result-word')?.textContent ?? null",
   );
-  return { query, found: found !== null, count, first };
+  const elapsed = await evaluate('Math.round(performance.now() - window.__searchStarted)');
+  return { query, found: found !== null, count, first, ms: elapsed };
 }
 
+const extraQueries = arg('--queries', '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
 const japanese = await search('静か');
-const russian = await search('ночь');
+const russian = extraQueries.length ? null : await search('ночь');
+const extras = [];
+for (const query of extraQueries) extras.push(await search(query));
+
+const marks = await evaluate(`(() => {
+  const rows = performance.getEntriesByType('mark')
+    .filter((entry) => entry.name.startsWith('dict:'))
+    .map((entry) => ({ name: entry.name, at: Math.round(entry.startTime) }));
+  const out = {};
+  let previous = null;
+  for (const row of rows) {
+    out[row.name] = row.at;
+    if (previous && /:parsed$/.test(row.name)) out['parse:' + row.name] = row.at - previous.at;
+    previous = row;
+  }
+  return out;
+})()`).catch(() => null);
+
+const markAt = (name) => (marks && typeof marks[name] === 'number' ? marks[name] : null);
+const coreReadyMs = markAt('dict:core:indexed');
+const fullReadyMs = markAt('dict:full:indexed');
+const indexMs =
+  markAt('dict:full:ingested') !== null && fullReadyMs !== null
+    ? fullReadyMs - markAt('dict:full:ingested')
+    : null;
 
 const heap = await send('Runtime.getHeapUsage').catch(() => null);
 
@@ -208,11 +231,13 @@ console.log(
       network: network ?? 'local',
       totalMs: Date.now() - startedAt,
       demoMs: tDemo,
-      dictionaryMs: tDictionary,
-      searchReadyMs: tSearchReady,
+      dictionaryMs: readyAt ?? fullReadyMs,
+      searchReadyMs: coreReadyMs,
+      indexBuildMs: indexMs,
       status,
-      searches: [japanese, russian],
+      searches: [japanese, russian, ...extras].filter(Boolean),
       heapMb: heap ? Math.round(heap.usedSize / 1048576) : null,
+      marks,
     },
     null,
     2,
