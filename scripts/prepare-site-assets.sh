@@ -55,6 +55,8 @@ test "$(find "$SITE/vendor/kuromoji/dict" -type f | wc -l)" -gt 10
 node "$ROOT/scripts/build-dictionary.mjs" --out "$SITE/data"
 test -s "$SITE/data/dict-$JM_VERSION.json"
 test -s "$SITE/data/dict-core-$JM_VERSION.json"
+test -s "$SITE/data/forms-$JM_VERSION.json"
+test -s "$SITE/data/forms-core-$JM_VERSION.json"
 
 echo "Prepared local app assets:"
 du -sh "$SITE/vendor" "$SITE/data"

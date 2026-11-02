@@ -155,24 +155,12 @@ await send('Page.navigate', { url });
 
 const tDemo = await waitFor("document.querySelectorAll('#readingCopy p').length > 0", 30000);
 
-// Когда словарь впервые пригоден для поиска (ядро частых слов) и когда
-// загружен полностью. Обе метки снимаются одним опросом, чтобы не искажать загрузку.
-const statusText =
-  "document.getElementById('dictLoadStatus').textContent + document.getElementById('systemStatus').textContent";
-let tSearchReady = null;
-let tDictionary = null;
-const waitStarted = Date.now();
-while (Date.now() - waitStarted < timeout) {
-  const text = await evaluate(statusText).catch(() => '');
-  if (tSearchReady === null && /(Базовый словарь|Полный JMdict)/.test(text)) {
-    tSearchReady = Date.now() - waitStarted;
-  }
-  if (tDictionary === null && /Полный JMdict/.test(text)) {
-    tDictionary = Date.now() - waitStarted;
-  }
-  if (tDictionary !== null) break;
-  await delay(150);
-}
+// Ждём полной готовности словаря. Точные промежуточные метки берём из
+// performance.mark() в приложении — статус «ядро готово» живёт слишком мало.
+const readyAt = await waitFor(
+  "/Полный JMdict/.test(document.getElementById('dictLoadStatus').textContent)",
+  timeout,
+);
 
 const status = await evaluate(
   "document.getElementById('dictLoadStatus').textContent || document.getElementById('systemStatus').textContent",
@@ -197,6 +185,28 @@ async function search(query) {
 const japanese = await search('静か');
 const russian = await search('ночь');
 
+const marks = await evaluate(`(() => {
+  const rows = performance.getEntriesByType('mark')
+    .filter((entry) => entry.name.startsWith('dict:'))
+    .map((entry) => ({ name: entry.name, at: Math.round(entry.startTime) }));
+  const out = {};
+  let previous = null;
+  for (const row of rows) {
+    out[row.name] = row.at;
+    if (previous && /:parsed$/.test(row.name)) out['parse:' + row.name] = row.at - previous.at;
+    previous = row;
+  }
+  return out;
+})()`).catch(() => null);
+
+const markAt = (name) => (marks && typeof marks[name] === 'number' ? marks[name] : null);
+const coreReadyMs = markAt('dict:core:indexed');
+const fullReadyMs = markAt('dict:full:indexed');
+const indexMs =
+  markAt('dict:full:ingested') !== null && fullReadyMs !== null
+    ? fullReadyMs - markAt('dict:full:ingested')
+    : null;
+
 const heap = await send('Runtime.getHeapUsage').catch(() => null);
 
 console.log(
@@ -208,11 +218,13 @@ console.log(
       network: network ?? 'local',
       totalMs: Date.now() - startedAt,
       demoMs: tDemo,
-      dictionaryMs: tDictionary,
-      searchReadyMs: tSearchReady,
+      dictionaryMs: readyAt ?? fullReadyMs,
+      searchReadyMs: coreReadyMs,
+      indexBuildMs: indexMs,
       status,
       searches: [japanese, russian],
       heapMb: heap ? Math.round(heap.usedSize / 1048576) : null,
+      marks,
     },
     null,
     2,
