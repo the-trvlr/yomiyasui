@@ -167,23 +167,36 @@ const status = await evaluate(
 );
 
 async function search(query) {
+  // Сбрасываем прошлую выдачу, иначе waitFor сработает на старых результатах.
+  await evaluate(
+    `(() => { document.getElementById('clearDictSearch')?.click(); document.getElementById('dictSearch').value = ''; })()`,
+  );
+  await delay(150);
+  // Время считаем в самой странице: от ввода до отрисованного результата.
+  await evaluate(`window.__searchStarted = performance.now()`);
   await evaluate(
     `(() => { const input = document.getElementById('dictSearch'); input.value = ${JSON.stringify(
       query,
     )}; input.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   );
-  await delay(500);
   const found = await waitFor("document.querySelectorAll('.dict-result').length > 0", 15000);
-  await delay(400);
+  await delay(200);
   const count = await evaluate("document.querySelectorAll('.dict-result').length");
   const first = await evaluate(
     "document.querySelector('.dict-result .dict-result-word')?.textContent ?? null",
   );
-  return { query, found: found !== null, count, first };
+  const elapsed = await evaluate('Math.round(performance.now() - window.__searchStarted)');
+  return { query, found: found !== null, count, first, ms: elapsed };
 }
 
+const extraQueries = arg('--queries', '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
 const japanese = await search('静か');
-const russian = await search('ночь');
+const russian = extraQueries.length ? null : await search('ночь');
+const extras = [];
+for (const query of extraQueries) extras.push(await search(query));
 
 const marks = await evaluate(`(() => {
   const rows = performance.getEntriesByType('mark')
@@ -222,7 +235,7 @@ console.log(
       searchReadyMs: coreReadyMs,
       indexBuildMs: indexMs,
       status,
-      searches: [japanese, russian],
+      searches: [japanese, russian, ...extras].filter(Boolean),
       heapMb: heap ? Math.round(heap.usedSize / 1048576) : null,
       marks,
     },

@@ -51,7 +51,8 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     core: appAssetUrl(`data/dict-core-${JM_VERSION}.json`),
     full: appAssetUrl(`data/dict-${JM_VERSION}.json`),
     formsCore: appAssetUrl(`data/forms-core-${JM_VERSION}.json`),
-    formsFull: appAssetUrl(`data/forms-${JM_VERSION}.json`)
+    formsFull: appAssetUrl(`data/forms-${JM_VERSION}.json`),
+    gloss: appAssetUrl(`data/gloss-${JM_VERSION}.json`)
   };
   // The manual-download links live in the HTML; derive them from the single version source
   // so the archive name can never drift from config.js.
@@ -63,6 +64,9 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   // Индекс форм приходит с CI уже отсортированным: два параллельных массива
   // вместо Map на полмиллиона ключей и нормализации каждой формы в браузере.
   let formKeys = [], formIds = [];
+  // Индекс переводов грузится отдельно и только когда нужен: он весит 4,7 МБ
+  // gzip, и до первого поиска по переводу эти байты не нужны.
+  let glossKeys = [], glossIds = [], glossLoadingPromise = null;
   let dictionaryLoaded = false, dictionaryLoadingPromise = null, dictionaryLoadFailed = false, dictionarySearchTimer = 0;
   let dictionaryDBPromise = null, activeDictionaryEntryId = null, dictionaryView = 'results';
 
@@ -916,6 +920,64 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
 
   function uniqueStrings(items) { return [...new Set(items.map(x => String(x || '').trim()).filter(Boolean))]; }
   function normalizeSearch(value) { return String(value || '').normalize('NFKC').trim().toLocaleLowerCase(); }
+  // Ромадзи → хирагана: позволяет искать «taberu», не переключая раскладку.
+  const ROMAJI_TABLE = (() => {
+    const table = {
+      a:'あ', i:'い', u:'う', e:'え', o:'お',
+      ka:'か', ki:'き', ku:'く', ke:'け', ko:'こ',
+      sa:'さ', shi:'し', si:'し', su:'す', se:'せ', so:'そ',
+      ta:'た', chi:'ち', ti:'ち', tsu:'つ', tu:'つ', te:'て', to:'と',
+      na:'な', ni:'に', nu:'ぬ', ne:'ね', no:'の',
+      ha:'は', hi:'ひ', fu:'ふ', hu:'ふ', he:'へ', ho:'ほ',
+      ma:'ま', mi:'み', mu:'む', me:'め', mo:'も',
+      ya:'や', yu:'ゆ', yo:'よ',
+      ra:'ら', ri:'り', ru:'る', re:'れ', ro:'ろ',
+      wa:'わ', wo:'を', "n'":'ん',
+      ga:'が', gi:'ぎ', gu:'ぐ', ge:'げ', go:'ご',
+      za:'ざ', ji:'じ', zi:'じ', zu:'ず', ze:'ぜ', zo:'ぞ',
+      da:'だ', di:'ぢ', du:'づ', de:'で', do:'ど',
+      ba:'ば', bi:'び', bu:'ぶ', be:'べ', bo:'ぼ',
+      pa:'ぱ', pi:'ぴ', pu:'ぷ', pe:'ぺ', po:'ぽ',
+      kya:'きゃ', kyu:'きゅ', kyo:'きょ', gya:'ぎゃ', gyu:'ぎゅ', gyo:'ぎょ',
+      sha:'しゃ', shu:'しゅ', sho:'しょ', sya:'しゃ', syu:'しゅ', syo:'しょ',
+      ja:'じゃ', ju:'じゅ', jo:'じょ', jya:'じゃ', jyu:'じゅ', jyo:'じょ',
+      cha:'ちゃ', chu:'ちゅ', cho:'ちょ', tya:'ちゃ', tyu:'ちゅ', tyo:'ちょ',
+      nya:'にゃ', nyu:'にゅ', nyo:'にょ',
+      hya:'ひゃ', hyu:'ひゅ', hyo:'ひょ', bya:'びゃ', byu:'びゅ', byo:'びょ',
+      pya:'ぴゃ', pyu:'ぴゅ', pyo:'ぴょ',
+      mya:'みゃ', myu:'みゅ', myo:'みょ',
+      rya:'りゃ', ryu:'りゅ', ryo:'りょ',
+    };
+    return table;
+  })();
+  function romajiToHiragana(value) {
+    const text = String(value || '').toLowerCase().trim();
+    if (!/^[a-z'\- ]+$/.test(text)) return '';
+    let out = '', rest = text.replace(/\s+/g, '');
+    const vowels = 'aiueo';
+    while (rest) {
+      // Одиночная n в конце или перед согласной — ん (hon → ほん, konnichi → こんにち).
+      if (rest === 'n') { out += 'ん'; break; }
+      if (rest[0] === 'n' && !vowels.includes(rest[1]) && rest[1] !== 'y' && rest[1] !== "'") {
+        out += 'ん'; rest = rest.slice(1); continue;
+      }
+      // matcha → まっちゃ: t перед ch даёт малую っ.
+      if (rest.startsWith('tch')) { out += 'っ'; rest = rest.slice(1); continue; }
+      // Удвоенная согласная — малая っ (gakkou → がっこう).
+      if (rest.length > 1 && rest[0] === rest[1] && !vowels.includes(rest[0]) && rest[0] !== 'n') {
+        out += 'っ'; rest = rest.slice(1); continue;
+      }
+      let matched = false;
+      for (let length = 3; length >= 1; length--) {
+        const chunk = rest.slice(0, length);
+        if (ROMAJI_TABLE[chunk]) { out += ROMAJI_TABLE[chunk]; rest = rest.slice(length); matched = true; break; }
+      }
+      if (matched) continue;
+      if (rest[0] === '-') { out += 'ー'; rest = rest.slice(1); continue; }
+      return '';
+    }
+    return out;
+  }
   function searchHasJapanese(value) { return /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff々〆ヶ]/.test(value || ''); }
   function toKatakana(value) { return String(value || '').replace(/[\u3041-\u3096]/g, ch => String.fromCharCode(ch.charCodeAt(0) + 0x60)); }
   function preferredWriting(entry) {
@@ -1054,7 +1116,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     dictionaryById = next;
     try { data.entries.length = 0; } catch (_) {}
   }
-  async function fetchCompiledDictionary(key, label) {
+  async function fetchCompiledDictionary(key, label, { quiet = false } = {}) {
     perfMark(`dict:${key}:fetch:start`);
     const response = await fetchWithTimeout(COMPILED_DICT[key], { credentials: 'omit', cache: 'force-cache' }, 180000);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1068,6 +1130,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
         if (part.done) break;
         chunks.push(part.value);
         received += part.value.byteLength;
+        if (quiet) continue;
         const mb = (received / 1048576).toFixed(1).replace('.', ',');
         const totalText = total ? ` / ${(total / 1048576).toFixed(1).replace('.', ',')} МБ` : '';
         updateDictStatus(`Скачиваю ${label}: ${mb}${totalText}`);
@@ -1080,7 +1143,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       buffer = await response.arrayBuffer();
     }
     perfMark(`dict:${key}:fetched`);
-    updateDictStatus(`Разбираю ${label}…`);
+    if (!quiet) updateDictStatus(`Разбираю ${label}…`);
     const parsed = JSON.parse(new TextDecoder().decode(buffer));
     perfMark(`dict:${key}:parsed`);
     return parsed;
@@ -1166,6 +1229,62 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       if(visit(form, formIds[index])===false) break;
     }
   }
+  function applyGlossIndex(rows) {
+    glossKeys=new Array(rows.length); glossIds=new Array(rows.length);
+    for(let i=0;i<rows.length;i++) { glossKeys[i]=rows[i][0]; glossIds[i]=rows[i][1]||[]; }
+  }
+  function glossLowerBound(needle) {
+    let low=0, high=glossKeys.length;
+    while(low<high) { const mid=(low+high)>>1; if(glossKeys[mid]<needle) low=mid+1; else high=mid; }
+    return low;
+  }
+  async function ensureGlossIndex() {
+    if(glossKeys.length) return true;
+    if(glossLoadingPromise) return glossLoadingPromise;
+    glossLoadingPromise=(async()=>{
+      try {
+        // Тихо: словарь уже готов и показывает свой статус, фоновая догрузка
+        // не должна его перетирать.
+        const data=await fetchCompiledDictionary('gloss','индекс переводов',{quiet:true});
+        applyGlossIndex(data.gloss||[]);
+        if(dictSearch.value.trim()) queueDictionarySearch(true);
+        return true;
+      } catch(err) {
+        // Без индекса поиск по переводу работает как раньше — полным перебором.
+        console.warn('Gloss index unavailable:', err);
+        return false;
+      } finally { glossLoadingPromise=null; }
+    })();
+    return glossLoadingPromise;
+  }
+  /**
+   * Кандидаты для запроса по переводу. null означает «индекса нет» — тогда
+   * ищем перебором, как раньше. Многословные запросы тоже идут перебором:
+   * индекс построен по отдельным словам.
+   */
+  function glossCandidates(query) {
+    if(!glossKeys.length) { ensureGlossIndex(); return null; }
+    const q=cleanGlossText(query);
+    if(!q || /\s/u.test(q)) return null;
+    const keys=new Set([q]);
+    const stem=russianWordStem(q);
+    if(stem && stem!==q) keys.add(stem);
+    const found=new Set();
+    for(const key of keys) {
+      const at=glossLowerBound(key);
+      if(at<glossKeys.length && glossKeys[at]===key) for(const id of glossIds[at]) found.add(id);
+      if(key.length>=3) {
+        let scanned=0;
+        for(let i=glossLowerBound(key); i<glossKeys.length && scanned<3000; i++,scanned++) {
+          if(!glossKeys[i].startsWith(key)) break;
+          for(const id of glossIds[i]) found.add(id);
+        }
+      }
+    }
+    const out=[];
+    for(const id of found) { const entry=dictionaryEntries[id]; if(entry) out.push(entry); }
+    return out;
+  }
   /** Ручной импорт архивов: индекс приходится строить здесь. */
   async function rebuildFormIndex() {
     const map=new Map();
@@ -1228,6 +1347,9 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       console.warn('Compiled core dictionary unavailable:', err);
     }
     await loadCompiledStage('full', 'formsFull', 'полный словарь');
+    // Индекс переводов нужен только для поиска по русскому/английскому.
+    // Грузим в фоне, чтобы не задерживать готовность словаря.
+    ensureGlossIndex();
   }
 
   async function loadFullDictionary(force=false) {
@@ -1398,7 +1520,10 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   }
 
   function searchDictionary(query, limit=35) {
-    const q=normalizeSearch(query); if(!q || !dictionaryEntries.length) return [];
+    // Ромадзи ищем как кану: «taberu» → たべる.
+    const romaji=romajiToHiragana(query);
+    const effective=romaji || query;
+    const q=normalizeSearch(effective); if(!q || !dictionaryEntries.length) return [];
     const keys=[q];
     if(searchHasJapanese(q)) {
       const h=normalizeSearch(toHiragana(q)), k=normalizeSearch(toKatakana(q));
@@ -1422,7 +1547,8 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     // Cyrillic queries search Russian glosses only, avoiding irrelevant English matches.
     const russianOnly = isCyrillicQuery(q);
     const matches=[];
-    for(const entry of dictionaryEntries) {
+    const pool = glossCandidates(query);
+    for(const entry of (pool ?? dictionaryEntries)) {
       let score=0;
       for(const sense of (entry.rusSenses||[])) {
         for(const def of (sense.defs||[])) score=Math.max(score,translationMatchScore(def,q));
@@ -1538,9 +1664,10 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       if(!dictionaryEntries.length) { renderSearchResults([],query); return; }
       const entries=searchDictionary(query,35); renderSearchResults(entries,query);
       // For exact Japanese lookup, preview the best exact entry without making the search field jump.
-      if(searchHasJapanese(query)) {
+      if(searchHasJapanese(romajiToHiragana(query) || query)) {
         let exact=[];
-        for(const candidate of [normalizeSearch(query), normalizeSearch(toHiragana(query)), normalizeSearch(toKatakana(query))]) {
+        const romajiQuery=romajiToHiragana(query) || query;
+        for(const candidate of [normalizeSearch(romajiQuery), normalizeSearch(toHiragana(romajiQuery)), normalizeSearch(toKatakana(romajiQuery))]) {
           exact=formEntries(candidate); if(exact.length) break;
         }
         if(exact.length && !currentWord?.tokenContext && !activeDictionaryEntryId) showDictionaryEntry(exact.find(dictionaryEntryCommon)||exact[0]);

@@ -186,6 +186,97 @@ function buildForms(rows) {
   return [...map.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 
+/**
+ * Те же правила, что в рантайме (site/app.js: russianWordStem): без них индекс
+ * глоссов находил бы меньше форм, чем прежний линейный поиск.
+ */
+const RUSSIAN_ENDINGS = [
+  'иями',
+  'ями',
+  'ами',
+  'ого',
+  'ему',
+  'ому',
+  'ыми',
+  'ими',
+  'ией',
+  'иям',
+  'иях',
+  'ою',
+  'ею',
+  'ьего',
+  'ьему',
+  'ов',
+  'ев',
+  'ей',
+  'ам',
+  'ям',
+  'ах',
+  'ях',
+  'ая',
+  'яя',
+  'ое',
+  'ее',
+  'ые',
+  'ие',
+  'ый',
+  'ий',
+  'ой',
+  'ую',
+  'юю',
+  'а',
+  'я',
+  'ы',
+  'и',
+  'у',
+  'ю',
+  'е',
+  'о',
+];
+
+function russianStem(value) {
+  const word = normalizeForm(value)
+    .replace(/ё/g, 'е')
+    .replace(/[^\p{L}]/gu, '');
+  if (word.length < 5) return word;
+  for (const ending of RUSSIAN_ENDINGS) {
+    if (word.endsWith(ending) && word.length - ending.length >= 4) {
+      return word.slice(0, -ending.length);
+    }
+  }
+  return word;
+}
+
+/**
+ * Индекс глоссов: токен (и его русская основа) → записи. Позволяет не
+ * перебирать все 218 тыс. записей на каждый запрос по переводу.
+ */
+function buildGlossIndex(rows) {
+  const map = new Map();
+  rows.forEach((row, index) => {
+    const [, , , senses, rusSenses] = row;
+    const keys = new Set();
+    for (const [, defs] of [...senses, ...rusSenses]) {
+      for (const def of defs) {
+        const words = normalizeForm(def)
+          .replace(/ё/g, 'е')
+          .split(/[^\p{L}\p{N}]+/u);
+        for (const word of words) {
+          if (!word || word.length < 2) continue;
+          keys.add(word);
+          const stem = russianStem(word);
+          if (stem && stem !== word && stem.length >= 3) keys.add(stem);
+        }
+      }
+    }
+    for (const key of keys) {
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(index);
+    }
+  });
+  return [...map.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+
 function writeJson(file, data) {
   const text = JSON.stringify(data);
   fs.writeFileSync(file, text);
@@ -238,6 +329,14 @@ function main() {
     builtAt: new Date().toISOString(),
     count: coreForms.length,
     forms: coreForms,
+  });
+
+  log('gloss', 'индекс переводов');
+  writeJson(path.join(OUT_DIR, `gloss-${JM_VERSION}.json`), {
+    version: JM_VERSION,
+    builtAt: new Date().toISOString(),
+    count: buildGlossIndex(rows).length,
+    gloss: buildGlossIndex(rows),
   });
 
   log('done', 'словарь готов');
