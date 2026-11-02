@@ -30,6 +30,7 @@ const url = arg('--url');
 const label = arg('--label', 'run');
 const timeout = Number(arg('--timeout', '300000'));
 const cpuRate = Number(arg('--cpu', '4'));
+const network = arg('--network', null);
 
 if (!url) {
   console.error('Укажите --url');
@@ -125,6 +126,22 @@ await send('Page.enable');
 await send('Runtime.enable');
 // Телефонное окружение: без замедления CPU разница в парсинге почти не видна.
 await send('Emulation.setCPUThrottlingRate', { rate: cpuRate });
+
+// Сеть: на быстром локальном стенде порядок загрузок не виден, поэтому можно
+// включить профиль 4G/3G и сравнить версии в одинаковых условиях.
+const NETWORKS = {
+  '4g': { latency: 70, downloadThroughput: 1.5 * 1024 * 1024 },
+  '3g': { latency: 150, downloadThroughput: 400 * 1024 },
+};
+if (network && NETWORKS[network]) {
+  await send('Network.enable');
+  await send('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: NETWORKS[network].latency,
+    downloadThroughput: NETWORKS[network].downloadThroughput,
+    uploadThroughput: 512 * 1024,
+  });
+}
 // Пропускаем экран первого запуска.
 const { JM_VERSION } = await import('../site/config.js');
 await send('Page.addScriptToEvaluateOnNewDocument', {
@@ -188,6 +205,7 @@ console.log(
       label,
       url,
       cpuRate,
+      network: network ?? 'local',
       totalMs: Date.now() - startedAt,
       demoMs: tDemo,
       dictionaryMs: tDictionary,
