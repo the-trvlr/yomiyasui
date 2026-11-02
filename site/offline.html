@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>読みやすい — нет сети</title>
+<meta name="theme-color" content="#f4eedf">
+<style>
+  html, body { margin: 0; min-height: 100%; background: #eae3d5; color: #302d27;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .card { max-width: 520px; margin: 12vh auto 0; padding: 28px 26px 26px; background: #f4eedf;
+    border: 1px solid rgba(112,91,61,.24); border-radius: 20px; box-shadow: 0 12px 34px rgba(65,50,29,.08); }
+  .logo { display: block; width: 56px; height: 56px; border-radius: 16px; margin-bottom: 18px; }
+  h1 { margin: 0 0 10px; font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif;
+    font-size: 22px; font-weight: 600; letter-spacing: .02em; }
+  p { margin: 0 0 14px; color: #6f6659; line-height: 1.6; font-size: 15px; }
+  ul { margin: 0 0 20px; padding-left: 20px; color: #6f6659; line-height: 1.7; font-size: 15px; }
+  button { border: 1px solid #6e5a40; border-radius: 999px; background: #6e5a40; color: #fffaf0;
+    padding: 11px 20px; font: inherit; cursor: pointer; }
+  button:hover { background: #594830; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <img class="logo" src="./app-icon.svg" alt="">
+    <h1>Нет соединения</h1>
+    <p>Страница ещё не сохранена на этом устройстве, а сети сейчас нет.</p>
+    <ul>
+      <li>Откройте приложение, когда появится сеть, — оно сохранится целиком.</li>
+      <li>После первого запуска чтение, фуригана и словарь работают офлайн.</li>
+    </ul>
+    <button type="button" onclick="location.reload()">Повторить</button>
+  </main>
+</body>
+</html>

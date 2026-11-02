@@ -333,6 +333,85 @@ async function capture(
   return { fingerprint, errors, extra: extraData };
 }
 
+/**
+ * Офлайн-проверка: после установки service worker страница должна открываться
+ * без сети. Ошибки консоли собираем только до выключения сети — при офлайне
+ * приложение ожидаемо не может дотянуть анализатор и словарь.
+ */
+async function offlineCheck(port, url) {
+  const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, {
+    method: 'PUT',
+  });
+  const target = await response.json();
+  const cdp = await CDP.connect(target.webSocketDebuggerUrl);
+  const errors = [];
+
+  cdp.on('Runtime.exceptionThrown', (params) => {
+    const details = params.exceptionDetails ?? {};
+    errors.push(details.exception?.description ?? details.text ?? 'исключение');
+  });
+
+  await cdp.send('Page.enable');
+  await cdp.send('Runtime.enable');
+  await cdp.send('Network.enable');
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `try { localStorage.setItem(${JSON.stringify(`yomiyasui-first-setup-${JM_VERSION}`)}, 'done'); } catch (_) {}`,
+  });
+
+  await cdp.send('Page.navigate', { url });
+  const loaded = await waitFor(
+    cdp,
+    "document.querySelectorAll('#readingCopy p').length > 0",
+    30000,
+  );
+
+  const controlled = await waitFor(
+    cdp,
+    'navigator.serviceWorker && navigator.serviceWorker.controller ? true : false',
+    30000,
+  );
+
+  await cdp.send('Network.emulateNetworkConditions', {
+    offline: true,
+    latency: 0,
+    downloadThroughput: 0,
+    uploadThroughput: 0,
+  });
+
+  const errorsBeforeOffline = errors.length;
+  await cdp.send('Page.reload', { ignoreCache: false });
+
+  const offlineRendered = await waitFor(
+    cdp,
+    "document.querySelectorAll('#readingCopy p').length > 0",
+    30000,
+  );
+  const offlineTitle = await evaluate(cdp, 'document.title').catch(() => null);
+  const offlineVersion = await evaluate(
+    cdp,
+    "document.getElementById('brandVersionBadge')?.textContent ?? ''",
+  ).catch(() => '');
+
+  await cdp.send('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: -1,
+  });
+
+  cdp.close();
+  await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`).catch(() => {});
+
+  return {
+    loaded,
+    controlled,
+    offlineRendered,
+    offlineTitle,
+    offlineVersion,
+    errors: errors.slice(0, errorsBeforeOffline),
+  };
+}
+
 async function main() {
   const chrome = findChrome();
   if (!chrome) {
@@ -399,6 +478,7 @@ async function main() {
       readyTimeout: 240000,
       extra: DICTIONARY_PROBE,
     });
+    const offline = await offlineCheck(devtoolsPort, `${base}/site/`);
     const chapters = await capture(devtoolsPort, `${base}/site/`, {
       afterLoad: CHAPTER_SETUP,
       readyExpression:
@@ -452,6 +532,11 @@ async function main() {
         `прокрутка ${v.trackTransform}, жест тачпада: ${v.wheelMoved ? 'да' : 'нет'}`,
     );
 
+    console.log(
+      `\nОфлайн: SW контролирует страницу — ${offline.controlled ? 'да' : 'нет'}, ` +
+        `перезагрузка без сети — ${offline.offlineRendered ? 'ок' : 'нет'} (${offline.offlineVersion})`,
+    );
+
     const d = dictionary.extra || {};
     console.log(`\nСловарь: ${d.count} результат(ов), первое слово «${d.first}» · ${d.status}`);
 
@@ -484,6 +569,10 @@ async function main() {
       problems.push(`перед текстом должно оставаться 0.5-0.9 ширины, получено ${v.startInset}`);
     }
     if (v.wheelMoved !== true) problems.push('горизонтальный жест тачпада не прокручивает текст');
+    if (!offline.loaded) problems.push('страница не загрузилась перед офлайн-проверкой');
+    if (!offline.controlled) problems.push('service worker не взял страницу под контроль');
+    if (!offline.offlineRendered) problems.push('страница не открылась без сети');
+    if (offline.errors.length) problems.push(`ошибки до офлайна: ${offline.errors.join(' | ')}`);
     if (dictionary.errors.length) problems.push(`ошибки словаря: ${dictionary.errors.join(' | ')}`);
     if (!(d.count > 0)) problems.push('поиск по「静か」ничего не вернул');
     if (d.first !== '静か')

@@ -28,6 +28,13 @@ const REQUIRED_IDS = [
   'bootSplash',
 ];
 
+/** Ширина и высота PNG из заголовка IHDR. */
+function pngSize(file) {
+  const buffer = fs.readFileSync(file);
+  if (buffer.length < 24 || buffer.readUInt32BE(0) !== 0x89504e47) return null;
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
 /** Синтаксис JavaScript через `node --check` (ESM определяется по package.json). */
 function syntaxErrors(file) {
   const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
@@ -189,6 +196,48 @@ export function checkSite(htmlPath) {
     }
   }
 
+  // --- PWA: service worker и иконки ----------------------------------------
+  const swPath = path.join(siteDir, 'sw.js');
+  if (!fs.existsSync(swPath)) failures.push('site/sw.js is missing.');
+  else {
+    const sw = fs.readFileSync(swPath, 'utf8');
+    const config = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
+    const appVersion = /export const APP_VERSION\s*=\s*['"]([^'"]+)['"]/.exec(config)?.[1];
+    const jmVersion = /export const JM_VERSION\s*=\s*['"]([^'"]+)['"]/.exec(config)?.[1];
+    const swApp = /const APP_VERSION = '([^']+)'/.exec(sw)?.[1];
+    const swJm = /const JM_VERSION = '([^']+)'/.exec(sw)?.[1];
+    if (appVersion && swApp !== appVersion) {
+      failures.push(`site/sw.js caches APP_VERSION ${swApp}, but config.js says ${appVersion}.`);
+    }
+    if (jmVersion && swJm !== jmVersion) {
+      failures.push(`site/sw.js caches JM_VERSION ${swJm}, but config.js says ${jmVersion}.`);
+    }
+    const error = syntaxErrors(swPath);
+    if (error) failures.push(`site/sw.js failed syntax check:\n${error}`);
+  }
+  if (!/rel=["']apple-touch-icon["']/.test(html)) {
+    failures.push('Missing <link rel="apple-touch-icon"> for iOS home screen.');
+  }
+  for (const [relative, size] of [
+    ['icons/icon-192.png', 192],
+    ['icons/icon-512.png', 512],
+    ['icons/icon-maskable-512.png', 512],
+    ['icons/apple-touch-icon.png', 180],
+  ]) {
+    const file = path.join(siteDir, relative);
+    if (!fs.existsSync(file)) {
+      failures.push(`Missing PWA icon ${relative}.`);
+      continue;
+    }
+    const dimensions = pngSize(file);
+    if (!dimensions) failures.push(`${relative} is not a PNG.`);
+    else if (dimensions.width !== size || dimensions.height !== size) {
+      failures.push(
+        `${relative} is ${dimensions.width}x${dimensions.height}, expected ${size}x${size}.`,
+      );
+    }
+  }
+
   // --- Иконка и манифест ----------------------------------------------------
   const iconPath = path.join(siteDir, 'app-icon.svg');
   if (!fs.existsSync(iconPath)) failures.push('Missing app-icon.svg.');
@@ -207,6 +256,15 @@ export function checkSite(htmlPath) {
       ) {
         failures.push('Manifest must reference ./app-icon.svg.');
       }
+      for (const size of ['192x192', '512x512']) {
+        if (!manifest.icons?.some((icon) => icon.sizes === size && icon.type === 'image/png')) {
+          failures.push(`Manifest must include a ${size} PNG icon.`);
+        }
+      }
+      if (!manifest.icons?.some((icon) => icon.purpose === 'maskable')) {
+        failures.push('Manifest must include a maskable icon.');
+      }
+      if (!manifest.scope) failures.push('Manifest is missing scope.');
       if (!manifest.start_url) failures.push('Manifest is missing start_url.');
       if (manifest.display !== 'standalone')
         failures.push('Manifest display should be standalone.');
