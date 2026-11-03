@@ -134,6 +134,40 @@ const CHAPTER_PROBE = `(() => {
   return out;
 })()`;
 
+/** Большая книга для проверки, что переключения не пересобирают весь текст. */
+const PERF_BOOK_SETUP = `(() => {
+  const sentence = '静かな夜だった。窓の外では細い雨が降り続いていた。彼は本を閉じて、しばらく机の上の小さなランプを見つめた。';
+  const book = Array.from({ length: 120 }, (_, i) => '第' + (i + 1) + '段落。' + sentence + sentence).join('\\n\\n');
+  const input = document.getElementById('textInput');
+  input.value = book;
+  document.getElementById('applyText').click();
+  return 'ok';
+})()`;
+
+/** Переключение фуриганы и отметка слова не должны перерисовывать книгу. */
+const PERF_PROBE = `(() => {
+  const wordsBefore = document.querySelectorAll('#readingCopy .word').length;
+  const mode = document.getElementById('furiganaMode');
+  const startedFurigana = performance.now();
+  mode.value = mode.value === 'all' ? 'unknown' : 'all';
+  mode.dispatchEvent(new Event('change', { bubbles: true }));
+  const furiganaMs = Math.round(performance.now() - startedFurigana);
+
+  document.querySelector('#readingCopy .word').click();
+  const button = document.getElementById('knownToggle');
+  const startedKnown = performance.now();
+  if (button) button.click();
+  const knownMs = Math.round(performance.now() - startedKnown);
+
+  return {
+    wordsBefore,
+    wordsAfter: document.querySelectorAll('#readingCopy .word').length,
+    paragraphs: document.querySelectorAll('#readingCopy > p').length,
+    furiganaMs,
+    knownMs: button ? knownMs : -1
+  };
+})()`;
+
 /** Вводит запрос в словарь; результаты появятся после загрузки словаря. */
 const DICTIONARY_SETUP = `(() => {
   const input = document.getElementById('dictSearch');
@@ -252,7 +286,11 @@ async function evaluate(cdp, expression) {
     returnByValue: true,
     awaitPromise: true,
   });
-  if (exceptionDetails) throw new Error(exceptionDetails.text ?? 'ошибка evaluate');
+  if (exceptionDetails) {
+    throw new Error(
+      exceptionDetails.exception?.description ?? exceptionDetails.text ?? 'ошибка evaluate',
+    );
+  }
   return result.value;
 }
 
@@ -478,6 +516,12 @@ async function main() {
       readyTimeout: 240000,
       extra: DICTIONARY_PROBE,
     });
+    const perf = await capture(devtoolsPort, `${base}/site/`, {
+      afterLoad: PERF_BOOK_SETUP,
+      readyExpression: "document.querySelectorAll('#readingCopy .word').length > 0",
+      readyTimeout: 240000,
+      extra: PERF_PROBE,
+    });
     const offline = await offlineCheck(devtoolsPort, `${base}/site/`);
     const chapters = await capture(devtoolsPort, `${base}/site/`, {
       afterLoad: CHAPTER_SETUP,
@@ -503,6 +547,12 @@ async function main() {
       else if (!same) mismatches.push(key);
       rows.push({ key, before, after, status });
     }
+
+    const p = perf.extra || {};
+    console.log(
+      `\nБольшая книга: ${p.paragraphs} абз., ${p.wordsBefore} слов · фуригана ${p.furiganaMs} мс, ` +
+        `отметка слова ${p.knownMs} мс`,
+    );
 
     console.log(
       'Поле                     main                      phase-0                   статус',
@@ -569,6 +619,11 @@ async function main() {
       problems.push(`перед текстом должно оставаться 0.5-0.9 ширины, получено ${v.startInset}`);
     }
     if (v.wheelMoved !== true) problems.push('горизонтальный жест тачпада не прокручивает текст');
+    if (perf.errors.length) problems.push(`ошибки на большой книге: ${perf.errors.join(' | ')}`);
+    if (!(p.wordsBefore > 8000)) problems.push(`ожидалось много слов, получено ${p.wordsBefore}`);
+    if (p.wordsAfter !== p.wordsBefore) problems.push('переключение фуриганы пересобрало текст');
+    if (!(p.furiganaMs < 150)) problems.push(`переключение фуриганы заняло ${p.furiganaMs} мс`);
+    if (!(p.knownMs >= 0 && p.knownMs < 300)) problems.push(`отметка слова заняла ${p.knownMs} мс`);
     if (!offline.loaded) problems.push('страница не загрузилась перед офлайн-проверкой');
     if (!offline.controlled) problems.push('service worker не взял страницу под контроль');
     if (!offline.offlineRendered) problems.push('страница не открылась без сети');

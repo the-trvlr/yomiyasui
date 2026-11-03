@@ -343,6 +343,30 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     userMovedSinceApply = true;
     isFinished = false; updateTransform(); updateSeekUI(); $('chapterSelect').value = String(i); saveCurrentProgress();
   }
+  /**
+   * Якорь позиции: абзац на линии чтения и смещение внутри него. При смене
+   * шрифта, ширины строки или ориентации пересчитываем offset от абзаца, а не
+   * масштабируем пиксели — иначе читателя уносит в другое место книги.
+   */
+  function captureAnchor() {
+    const nodes = copy.children;
+    if (!nodes.length) return null;
+    const line = offset;
+    let index = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      if (axisOffsetOf(nodes[i]) <= line + 1) index = i;
+      else break;
+    }
+    return { index, delta: line - axisOffsetOf(nodes[index]) };
+  }
+  function restoreAnchor(anchor) {
+    if (!anchor) return;
+    const node = copy.children[anchor.index];
+    if (!node) return;
+    const position = axisOffsetOf(node);
+    offset = Math.max(0, Math.min(getMaxOffset(), position + anchor.delta));
+  }
+
   function applyOrientationStyles() {
     reader.classList.toggle('vertical', isVertical());
     const select = $('textOrientation');
@@ -353,6 +377,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     if (next === textOrientation) return;
     // Доля прочитанного переносится на новую раскладку: пиксельная позиция
     // между режимами несопоставима, а прогресс по книге — да.
+    const anchor = captureAnchor();
     const ratio = getProgressRatio();
     pinnedChapter = null;
     textOrientation = next;
@@ -362,7 +387,8 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     }
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const maxOffset = getMaxOffset();
-      offset = Math.max(0, Math.min(maxOffset, ratio * maxOffset));
+      if (anchor) restoreAnchor(anchor);
+      else offset = Math.max(0, Math.min(maxOffset, ratio * maxOffset));
       isFinished = ratio >= 0.9995;
       updateTransform(); updateSeekUI(); setState(isPlaying);
       saveCurrentProgress();
@@ -370,6 +396,9 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   }
   function updateSettings() {
     const speed = getSpeed(), width = Number($('lineWidth').value), leading = Number($('leading').value), fontSize = Number($('fontSize').value);
+    // Якорь снимаем до изменения переменных: иначе он указывает на абзац,
+    // который оказался на линии чтения уже в новой раскладке.
+    const anchor = captureAnchor();
     document.documentElement.style.setProperty('--line-chars', width);
     document.documentElement.style.setProperty('--reader-leading', leading);
     document.documentElement.style.setProperty('--reader-font-size', `${fontSize}px`);
@@ -380,7 +409,11 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     // Отступ перед текстом в 縦書き зависит от размера шрифта и интервала.
     document.documentElement.style.setProperty('--vertical-start-inset', `${verticalStartInset()}px`);
     pinnedChapter = null;
-    requestAnimationFrame(() => { const maxOffset = getMaxOffset(); if (offset > maxOffset) offset = maxOffset; updateTransform(); updateSeekUI(); scheduleProgressSave(); });
+    requestAnimationFrame(() => {
+      restoreAnchor(anchor);
+      const maxOffset = getMaxOffset(); if (offset > maxOffset) offset = maxOffset;
+      updateTransform(); updateSeekUI(); scheduleProgressSave();
+    });
   }
 
   // Persistent bookshelf: book text is kept in one IndexedDB store, while small progress
@@ -644,6 +677,23 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
       }
     });
   }
+  function requestWorkerTokenizationBatch(worker, texts) {
+    const id = ++analyzerRequestId;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        analyzerPendingRequests.delete(id);
+        reject(new Error('Worker не разобрал пакет абзацев за 120 секунд.'));
+      }, 120000);
+      analyzerPendingRequests.set(id, { resolve, reject, timer });
+      try {
+        worker.postMessage({ type: 'tokenize-batch', id, texts });
+      } catch (err) {
+        clearTimeout(timer);
+        analyzerPendingRequests.delete(id);
+        reject(err);
+      }
+    });
+  }
   async function ensureTokenizer(force=false) {
     if (force) resetAnalyzerWorker();
     if (tokenizer) return tokenizer;
@@ -667,7 +717,12 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
             if (settled) return;
             settled = true; clearTimeout(initTimer);
             setBootProgress(48,'Анализатор готов','Обрабатываю демонстрационный текст перед подключением словарей…');
-            resolve({ tokenize: text => requestWorkerTokenization(worker, text) }); return;
+            resolve({
+              worker,
+              tokenize: text => requestWorkerTokenization(worker, text),
+              tokenizeBatch: texts => requestWorkerTokenizationBatch(worker, texts),
+            });
+            return;
           }
           if (message.type === 'init-progress') {
             const detail=message.message || 'Инициализирую японский анализатор…'; setSystemStatus(detail);
@@ -685,6 +740,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
             clearTimeout(pending.timer);
             analyzerPendingRequests.delete(message.id);
             if (message.type === 'tokenized') pending.resolve(message.tokens || []);
+            else if (message.type === 'tokenized-batch') pending.resolve(message.results || []);
             else pending.reject(new Error(message.error || 'Ошибка анализа текста.'));
           }
         };
@@ -736,38 +792,56 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     }
     return `<ruby>${safeSurface}<rt>${escapeHTML(hira)}</rt></ruby>`;
   }
+  // Руби рендерится всегда, а видимость задаёт класс режима на области чтения
+  // (см. app.css). Так переключение фуриганы не перестраивает текст.
   function renderToken(token, forcePlain=false) {
     const surface = token.surface_form || '';
     const known = tokenIsKnown(token);
-    const mode = $('furiganaMode').value;
-    const showRuby = !forcePlain && mode !== 'none' && (mode === 'all' || !known) && containsKanji(surface);
+    const showRuby = !forcePlain;
     const reading = token.reading && token.reading !== '*' ? toHiragana(token.reading) : '';
     const title = [token.basic_form && token.basic_form !== '*' ? `Форма: ${token.basic_form}` : '', reading ? `Чтение: ${reading}` : ''].filter(Boolean).join(' · ');
     return `<span class="word${known ? ' is-known' : ''}" tabindex="0" role="button" data-surface="${escapeHTML(surface)}" data-basic="${escapeHTML(token.basic_form && token.basic_form !== '*' ? token.basic_form : surface)}" data-reading="${escapeHTML(reading)}" data-pos="${escapeHTML([token.pos,token.pos_detail_1,token.pos_detail_2].filter(v => v && v !== '*').join(' · '))}" data-key="${escapeHTML(dictionaryKey(token))}" title="${escapeHTML(title || 'Нажми, чтобы открыть словарь')}">${furiganaHTML(surface, reading, showRuby)}</span>`;
+  }
+  function applyFuriganaMode() {
+    const mode = $('furiganaMode').value;
+    copy.classList.toggle('furigana-all', mode === 'all');
+    copy.classList.toggle('furigana-unknown', mode !== 'all' && mode !== 'none');
+    copy.classList.toggle('furigana-none', mode === 'none');
+  }
+
+  function buildParagraph(paragraphIndex) {
+    const paragraph=analyzedParagraphs[paragraphIndex];
+    const p = document.createElement('p'); p.dataset.paragraphIndex=String(paragraphIndex);
+    if (paragraph.heading) p.className = 'chapter-heading';
+    if (!paragraph.tokens) { p.textContent = paragraph.text; return p; }
+    const raw = paragraph.text; let cursor = 0;
+    for (const token of paragraph.tokens) {
+      const surface = String(token.surface_form || ''); if (!surface) continue;
+      let idx = raw.indexOf(surface, cursor);
+      if (idx < 0) idx = cursor;
+      if (idx > cursor) p.appendChild(document.createTextNode(raw.slice(cursor, idx)));
+      const wrap = document.createElement('span'); wrap.innerHTML = renderToken(token); p.appendChild(wrap.firstChild);
+      cursor = Math.min(raw.length, idx + surface.length);
+    }
+    if (cursor < raw.length) p.appendChild(document.createTextNode(raw.slice(cursor)));
+    return p;
+  }
+  /** Обновляет только что разобранные абзацы, не перестраивая книгу целиком. */
+  function patchParagraphs(from, to) {
+    const nodes = copy.children;
+    for (let i = from; i < to && i < nodes.length; i++) {
+      if (!analyzedParagraphs[i]) continue;
+      nodes[i].replaceWith(buildParagraph(i));
+    }
   }
   function renderAnalyzedText() {
     copy.replaceChildren();
     const fragment = document.createDocumentFragment();
     for (let paragraphIndex=0; paragraphIndex<analyzedParagraphs.length; paragraphIndex++) {
-      const paragraph=analyzedParagraphs[paragraphIndex];
-      const p = document.createElement('p'); p.dataset.paragraphIndex=String(paragraphIndex);
-      if (paragraph.heading) p.className = 'chapter-heading';
-      if (!paragraph.tokens) { p.textContent = paragraph.text; }
-      else {
-        const raw = paragraph.text; let cursor = 0;
-        for (const token of paragraph.tokens) {
-          const surface = String(token.surface_form || ''); if (!surface) continue;
-          let idx = raw.indexOf(surface, cursor);
-          if (idx < 0) idx = cursor;
-          if (idx > cursor) p.appendChild(document.createTextNode(raw.slice(cursor, idx)));
-          const wrap = document.createElement('span'); wrap.innerHTML = renderToken(token); p.appendChild(wrap.firstChild);
-          cursor = Math.min(raw.length, idx + surface.length);
-        }
-        if (cursor < raw.length) p.appendChild(document.createTextNode(raw.slice(cursor)));
-      }
-      fragment.appendChild(p);
+      fragment.appendChild(buildParagraph(paragraphIndex));
     }
     copy.appendChild(fragment);
+    applyFuriganaMode();
     reader.classList.toggle('has-text', copy.textContent.trim().length > 0);
     updateTransform(); updateSeekUI();
   }
@@ -818,17 +892,22 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     try {
       const tok = await ensureTokenizer();
       if (version !== renderVersion) return;
-      for (let i = 0; i < analyzedParagraphs.length; i++) {
+      // Разбираем пакетами и сразу показываем готовое: фуригана появляется
+      // через первые доли секунды, а не после обработки всей книги.
+      const BATCH = 25;
+      for (let start = 0; start < analyzedParagraphs.length; start += BATCH) {
         if (version !== renderVersion) return;
-        const item = analyzedParagraphs[i];
-        try { item.tokens = await tok.tokenize(item.text); } catch (_) { item.tokens = null; }
-        if (i % 20 === 0) {
-          setSystemStatus(`Разбираю японский текст: ${Math.min(i+1, analyzedParagraphs.length).toLocaleString('ru-RU')} / ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз.…`);
-          await new Promise(resolve => requestAnimationFrame(() => resolve()));
-        }
+        const batch = analyzedParagraphs.slice(start, start + BATCH);
+        let results = null;
+        try { results = await tok.tokenizeBatch(batch.map(item => item.text)); } catch (_) { results = null; }
+        if (version !== renderVersion) return;
+        for (let k = 0; k < batch.length; k++) batch[k].tokens = (results && results[k]) || null;
+        patchParagraphs(start, start + batch.length);
+        setSystemStatus(`Разбираю японский текст: ${Math.min(start + batch.length, analyzedParagraphs.length).toLocaleString('ru-RU')} / ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз.…`);
+        await new Promise(resolve => requestAnimationFrame(() => resolve()));
       }
       if (version !== renderVersion) return;
-      renderAnalyzedText(); await restore();
+      applyFuriganaMode(); await restore();
       analyzerBusy = false;
       setSystemStatus(`Анализ готов · ${analyzedParagraphs.length.toLocaleString('ru-RU')} абз. · нажимай на слово для поиска в словаре`, 'ready');
       bootAnalyzerReady=true; setBootStep('analyzer','done','Анализатор подключён и готов к работе');
@@ -1694,7 +1773,7 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
   $('lineWidth').addEventListener('input', updateSettings);
   $('leading').addEventListener('input', updateSettings);
   $('fontSize').addEventListener('input', updateSettings);
-  $('furiganaMode').addEventListener('change', () => { renderAnalyzedText(); updateTransform(); });
+  $('furiganaMode').addEventListener('change', () => { applyFuriganaMode(); updateTransform(); });
   $('textOrientation').addEventListener('change', (event) => setTextOrientation(event.target.value));
   $('applyText').addEventListener('click', async () => {
     const data=plainDocument(textInput.value,'Вставленный текст');
@@ -1786,7 +1865,12 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     saveKnownWords();
     const button=dictDetail.querySelector('#knownToggle');
     if(button) button.textContent=knownWords.has(currentWord.key)?'✓ Известно — снять':'✓ Отметить как известное';
-    renderAnalyzedText();
+    // Патчим только слова с этим ключом: полный рендер книги на каждый клик
+    // занимал до секунды на длинном тексте.
+    const isKnown=knownWords.has(currentWord.key);
+    for(const word of copy.querySelectorAll('.word')) {
+      if(word.dataset.key===currentWord.key) word.classList.toggle('is-known',isKnown);
+    }
   });
   bootContinue.addEventListener('click',()=>{bootSplash.hidden=true;bootSplash.classList.remove('closing');});
   retryAnalyzer.addEventListener('click', async () => {
@@ -1836,7 +1920,11 @@ import { APP_VERSION, JM_DB_NAME, JM_VERSION } from './config.js';
     event.preventDefault(); togglePlayback();
   });
   document.addEventListener('visibilitychange', () => { if(document.hidden && isPlaying) pause(); });
-  window.addEventListener('resize', () => { if(isPlaying){stopAnimation();rafId=requestAnimationFrame(tick);} updateTransform(); updateSeekUI(); });
+  window.addEventListener('resize', () => {
+    // После resize прежней раскладки уже нет, поэтому сохраняем долю прочитанного.
+    if(isPlaying){stopAnimation();rafId=requestAnimationFrame(tick);}
+    updateTransform(); updateSeekUI();
+  });
   if (mobileLayoutQuery.addEventListener) mobileLayoutQuery.addEventListener('change', syncResponsiveLayout);
   else mobileLayoutQuery.addListener(syncResponsiveLayout);
   syncResponsiveLayout();

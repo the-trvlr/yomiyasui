@@ -72,6 +72,29 @@ self.onmessage = function (event) {
     return;
   }
 
+  if (message.type === 'tokenize-batch') {
+    try {
+      if (!tokenizer) throw new Error('Анализатор ещё не готов.');
+      const results = (message.texts || []).map((text) => {
+        try {
+          const tokens = tokenizer.tokenize(String(text || ''));
+          addCanonicalReadings(tokens);
+          return tokens;
+        } catch (_) {
+          return null;
+        }
+      });
+      self.postMessage({ type: 'tokenized-batch', id: message.id, results });
+    } catch (err) {
+      self.postMessage({
+        type: 'tokenize-batch-error',
+        id: message.id,
+        error: err && err.message ? err.message : String(err)
+      });
+    }
+    return;
+  }
+
   if (message.type === 'tokenize') {
     try {
       if (!tokenizer) throw new Error('Анализатор ещё не готов.');

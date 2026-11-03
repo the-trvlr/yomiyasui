@@ -56,7 +56,10 @@
   .reader-copy rt { font-size: .48em; color: #746650; font-weight: 400; letter-spacing: 0; }
   .word { border-radius: 3px; cursor: pointer; transition: background .12s; }
   .word:hover { background: rgba(125,101,67,.11); }
-  .word.is-known rt { visibility: hidden; }
+  /* Режим фуриганы — класс на области чтения, а не перерисовка текста.
+     visibility вместо display: место под чтением сохраняется, текст не прыгает. */
+  .reader-copy.furigana-none rt { visibility: hidden; }
+  .reader-copy.furigana-unknown .word.is-known rt { visibility: hidden; }
   .word:focus-visible { outline: 1px dashed #8a704c; outline-offset: 2px; }
   .status-bar { margin: -6px 0 14px; min-height: 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: #81745f; font-size: 12px; }
   .status-bar .status-main { display: inline-flex; align-items: center; gap: 8px; }
