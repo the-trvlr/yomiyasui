@@ -2,11 +2,11 @@
 
 **読みやすい (Yomiyasui)** — браузерная читалка для спокойного чтения японских текстов. В ней можно импортировать собственные книги, читать с настраиваемой скоростью прокрутки, видеть фуригану и обращаться к локальному японскому словарю на русском и английском языках.
 
-**Версия:** 1.5  
+**Версия:** 1.6  
 **Статус:** вертикальное чтение (縦書き) и техническая перестройка  
 **Приложение:** https://the-trvlr.github.io/yomiyasui/  
 **Репозиторий:** https://github.com/the-trvlr/yomiyasui  
-**История изменений:** [RELEASE_NOTES_1.5.md](RELEASE_NOTES_1.5.md) · [RELEASE_NOTES_1.4.md](RELEASE_NOTES_1.4.md) · [RELEASE_NOTES_1.3.md](RELEASE_NOTES_1.3.md) · [RELEASE_NOTES_1.2.md](RELEASE_NOTES_1.2.md) · [RELEASE_NOTES_1.1.md](RELEASE_NOTES_1.1.md) · [RELEASE_NOTES_1.0.md](RELEASE_NOTES_1.0.md)
+**История изменений:** [RELEASE_NOTES_1.6.md](RELEASE_NOTES_1.6.md) · [RELEASE_NOTES_1.5.md](RELEASE_NOTES_1.5.md) · [RELEASE_NOTES_1.4.md](RELEASE_NOTES_1.4.md) · [RELEASE_NOTES_1.3.md](RELEASE_NOTES_1.3.md) · [RELEASE_NOTES_1.2.md](RELEASE_NOTES_1.2.md) · [RELEASE_NOTES_1.1.md](RELEASE_NOTES_1.1.md) · [RELEASE_NOTES_1.0.md](RELEASE_NOTES_1.0.md)
 
 ## Возможности
 

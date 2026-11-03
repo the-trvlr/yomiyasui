@@ -15,7 +15,7 @@
  * scripts/check-html.mjs, иначе кэш переживёт обновление словаря.
  */
 
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 const JM_VERSION = '3.6.2+20261012204142';
 
 const SHELL_CACHE = `yomiyasui-shell-${APP_VERSION}`;
